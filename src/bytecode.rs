@@ -8,6 +8,8 @@ pub enum Instruction {
     Mul,
     Div,
     Rem,
+    Eq,
+    Neq,
     Gt,
     Lt,
     Gte,

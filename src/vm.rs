@@ -53,6 +53,8 @@ impl Vm {
                     BinaryOp::Mul => Instruction::Mul,
                     BinaryOp::Div => Instruction::Div,
                     BinaryOp::Rem => Instruction::Rem,
+                    BinaryOp::Eq => Instruction::Eq,
+                    BinaryOp::Neq => Instruction::Neq,
                     BinaryOp::Gt => Instruction::Gt,
                     BinaryOp::Lt => Instruction::Lt,
                     BinaryOp::Gte => Instruction::Gte,
@@ -146,6 +148,14 @@ impl Vm {
                     } else {
                         bail!("Operands must be both integers.");
                     }
+                }
+                Instruction::Eq => {
+                    let (lhs, rhs) = self.pop_operands()?;
+                    self.stack.push(Value::Bool(lhs == rhs));
+                }
+                Instruction::Neq => {
+                    let (lhs, rhs) = self.pop_operands()?;
+                    self.stack.push(Value::Bool(lhs != rhs));
                 }
                 Instruction::Gt => {
                     let (lhs, rhs) = self.pop_operands()?;

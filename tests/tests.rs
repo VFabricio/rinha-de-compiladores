@@ -84,3 +84,39 @@ fn lte_works() {
     let result3 = interpret("1 <= 1");
     assert_eq!(result3.unwrap(), Value::Bool(true));
 }
+
+#[test]
+fn eq_works() {
+    let result = interpret("42 == 42");
+    assert_eq!(result.unwrap(), Value::Bool(true));
+
+    let result2 = interpret("false == false");
+    assert_eq!(result2.unwrap(), Value::Bool(true));
+
+    let result3 = interpret("42 == 0");
+    assert_eq!(result3.unwrap(), Value::Bool(false));
+
+    let result4 = interpret("true == false");
+    assert_eq!(result4.unwrap(), Value::Bool(false));
+
+    let result3 = interpret("true == 42");
+    assert_eq!(result3.unwrap(), Value::Bool(false));
+}
+
+#[test]
+fn neq_works() {
+    let result = interpret("42 != 0");
+    assert_eq!(result.unwrap(), Value::Bool(true));
+
+    let result2 = interpret("false != true");
+    assert_eq!(result2.unwrap(), Value::Bool(true));
+
+    let result3 = interpret("42 != 42");
+    assert_eq!(result3.unwrap(), Value::Bool(false));
+
+    let result4 = interpret("false != false");
+    assert_eq!(result4.unwrap(), Value::Bool(false));
+
+    let result3 = interpret("true != 42");
+    assert_eq!(result3.unwrap(), Value::Bool(true));
+}

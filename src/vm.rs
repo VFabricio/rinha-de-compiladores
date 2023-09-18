@@ -27,12 +27,12 @@ impl Vm {
     pub fn interpret(mut self, filename: &str, contents: &str) -> Result<Value> {
         let file = parse_or_report(filename, contents)?;
         let mut bytecode = Vec::new();
-        self.compile(file.expression, &mut bytecode);
+        self.compile(file.expression, &mut bytecode)?;
         let result = self.run(bytecode)?;
         Ok(result)
     }
 
-    fn compile(&mut self, term: Term, bytecode: &mut Vec<Instruction>) {
+    fn compile(&mut self, term: Term, bytecode: &mut Vec<Instruction>) -> Result<()> {
         match term {
             Term::Int(i) => {
                 let value = Value::Integer(i.value);
@@ -55,8 +55,8 @@ impl Vm {
                 bytecode.push(Instruction::Constant(self.constants.len() as u16 - 1));
             }
             Term::Binary(b) => {
-                self.compile(*b.lhs, bytecode);
-                self.compile(*b.rhs, bytecode);
+                self.compile(*b.lhs, bytecode)?;
+                self.compile(*b.rhs, bytecode)?;
 
                 let instruction = match b.op {
                     BinaryOp::Add => Instruction::Add,
@@ -76,35 +76,37 @@ impl Vm {
                 bytecode.push(instruction);
             }
             Term::Tuple(t) => {
-                self.compile(*t.first, bytecode);
-                self.compile(*t.second, bytecode);
+                self.compile(*t.first, bytecode)?;
+                self.compile(*t.second, bytecode)?;
 
                 bytecode.push(Instruction::Tuple);
             }
             Term::First(t) => {
-                self.compile(*t.value, bytecode);
+                self.compile(*t.value, bytecode)?;
 
                 bytecode.push(Instruction::First);
             }
             Term::Second(t) => {
-                self.compile(*t.value, bytecode);
+                self.compile(*t.value, bytecode)?;
 
                 bytecode.push(Instruction::Second);
             }
             Term::Let(t) => {
-                self.compile(*t.value, bytecode);
+                self.compile(*t.value, bytecode)?;
 
                 self.identifiers.push(t.name.text);
                 bytecode.push(Instruction::GlobalSet(self.identifiers.len() as u16 - 1));
 
-                self.compile(*t.next, bytecode);
+                self.compile(*t.next, bytecode)?;
             }
             Term::Var(t) => {
                 self.identifiers.push(t.text);
                 bytecode.push(Instruction::GlobalGet(self.identifiers.len() as u16 - 1));
             }
+            Term::Error(e) => bail!(anyhow!(e.message)),
             _ => unimplemented!(),
         };
+        Ok(())
     }
 
     fn pop_operands(&mut self) -> Result<(Value, Value)> {

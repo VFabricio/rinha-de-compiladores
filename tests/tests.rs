@@ -15,13 +15,19 @@ fn single_int() {
 
 #[test]
 fn algebra() {
-    let result = interpret("(12 - 5/2) * 4");
-    assert_eq!(result.unwrap(), Value::Integer(40));
+    let result = interpret("(12 - 5/2) * 4 + 19 % 4");
+    assert_eq!(result.unwrap(), Value::Integer(43));
 }
 
 #[test]
 fn division_by_zero() {
-    let result = interpret("(12 - 5/2) * 4/(-3 + 3)");
+    let result = interpret("(12 - 5/2) * 4 / (-3 + 3)");
+    assert!(result.is_err());
+}
+
+#[test]
+fn remainder_by_zero() {
+    let result = interpret("(12 - 5/2) * 4 % (-3 + 3)");
     assert!(result.is_err());
 }
 

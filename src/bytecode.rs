@@ -7,6 +7,7 @@ pub enum Instruction {
     Sub,
     Mul,
     Div,
+    Rem,
     Gt,
     Lt,
     Gte,

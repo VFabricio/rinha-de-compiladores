@@ -52,6 +52,7 @@ impl Vm {
                     BinaryOp::Sub => Instruction::Sub,
                     BinaryOp::Mul => Instruction::Mul,
                     BinaryOp::Div => Instruction::Div,
+                    BinaryOp::Rem => Instruction::Rem,
                     BinaryOp::Gt => Instruction::Gt,
                     BinaryOp::Lt => Instruction::Lt,
                     BinaryOp::Gte => Instruction::Gte,
@@ -127,6 +128,19 @@ impl Vm {
                         let result = lhs
                             .checked_div(rhs)
                             .ok_or(anyhow!("Attempted to divide by zero"))?;
+
+                        self.stack.push(Value::Integer(result));
+                    } else {
+                        bail!("Operands must be both integers.");
+                    }
+                }
+                Instruction::Rem => {
+                    let (lhs, rhs) = self.pop_operands()?;
+
+                    if let (Value::Integer(lhs), Value::Integer(rhs)) = (lhs, rhs) {
+                        let result = lhs
+                            .checked_rem(rhs)
+                            .ok_or(anyhow!("Attempted to take remainder by zero"))?;
 
                         self.stack.push(Value::Integer(result));
                     } else {

@@ -1,10 +1,10 @@
 use anyhow::{anyhow, bail, Result};
-
-use crate::{
-    ast::{Operation, Term},
-    bytecode::Instruction,
-    value::Value,
+use rinha::{
+    ast::{BinaryOp, Term},
+    parser::parse_or_report,
 };
+
+use crate::{bytecode::Instruction, value::Value};
 
 pub struct Vm {
     bytecode: Vec<Instruction>,
@@ -21,8 +21,9 @@ impl Vm {
         }
     }
 
-    pub fn interpret(&mut self, filename: String, term: Term) -> Result<Value> {
-        self.compile(term);
+    pub fn interpret(&mut self, filename: &str, contents: &str) -> Result<Value> {
+        let file = parse_or_report(filename, contents)?;
+        self.compile(file.expression);
         let result = self.run()?;
         Ok(result)
     }
@@ -30,22 +31,24 @@ impl Vm {
     fn compile(&mut self, term: Term) {
         match term {
             Term::Int(i) => {
-                let value = Value::Integer(i);
+                let value = Value::Integer(i.value);
                 self.constants.push(value);
 
                 self.bytecode
                     .push(Instruction::Constant(self.constants.len() as u16 - 1));
             }
-            Term::Binary { op, lhs, rhs } => {
-                self.compile(*lhs);
-                self.compile(*rhs);
+            Term::Binary(b) => {
+                self.compile(*b.lhs);
+                self.compile(*b.rhs);
 
-                match op {
-                    Operation::Add => {
+                match b.op {
+                    BinaryOp::Add => {
                         self.bytecode.push(Instruction::Add);
                     }
+                    _ => unimplemented!(),
                 }
             }
+            _ => unimplemented!(),
         };
     }
 

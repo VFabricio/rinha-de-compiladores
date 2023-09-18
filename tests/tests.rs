@@ -156,3 +156,21 @@ fn or_works() {
     let result5 = interpret("42 || false");
     assert!(result5.is_err());
 }
+
+#[test]
+fn str_literal_works() {
+    let result = interpret(r#" "test" "#);
+    assert_eq!(result.unwrap(), Value::String("test".to_owned()));
+}
+
+#[test]
+fn string_concatenation() {
+    let result = interpret(r#" "foo" + "bar" "#);
+    assert_eq!(result.unwrap(), Value::String("foobar".to_owned()));
+
+    let result = interpret(r#" 42 + "bar" "#);
+    assert_eq!(result.unwrap(), Value::String("42bar".to_owned()));
+
+    let result = interpret(r#" "foo" + 42 "#);
+    assert_eq!(result.unwrap(), Value::String("foo42".to_owned()));
+}

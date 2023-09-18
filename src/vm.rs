@@ -43,6 +43,12 @@ impl Vm {
                 };
                 bytecode.push(instruction);
             }
+            Term::Str(s) => {
+                let value = Value::String(s.value);
+                self.constants.push(value);
+
+                bytecode.push(Instruction::Constant(self.constants.len() as u16 - 1));
+            }
             Term::Binary(b) => {
                 self.compile(*b.lhs, bytecode);
                 self.compile(*b.rhs, bytecode);
@@ -86,7 +92,7 @@ impl Vm {
         for instruction in bytecode {
             match instruction {
                 Instruction::Constant(index) => {
-                    let value = self.constants[index as usize];
+                    let value = self.constants[index as usize].clone();
                     self.stack.push(value);
                 }
                 Instruction::True => {
@@ -100,10 +106,22 @@ impl Vm {
                 Instruction::Add => {
                     let (lhs, rhs) = self.pop_operands()?;
 
-                    if let (Value::Integer(lhs), Value::Integer(rhs)) = (lhs, rhs) {
-                        self.stack.push(Value::Integer(lhs + rhs));
-                    } else {
-                        bail!("Operands must be both integers.");
+                    match (lhs, rhs) {
+                        (Value::Integer(lhs), Value::Integer(rhs)) => {
+                            self.stack.push(Value::Integer(lhs + rhs));
+                        }
+                        (Value::String(lhs), Value::Integer(rhs)) => {
+                            self.stack.push(Value::String(format!("{lhs}{rhs}")));
+                        }
+                        (Value::Integer(lhs), Value::String(rhs)) => {
+                            self.stack.push(Value::String(format!("{lhs}{rhs}")));
+                        }
+                        (Value::String(lhs), Value::String(rhs)) => {
+                            self.stack.push(Value::String(format!("{lhs}{rhs}")));
+                        }
+                        _ => {
+                            bail!("Wrong types for add.");
+                        }
                     }
                 }
                 Instruction::Sub => {
@@ -219,6 +237,6 @@ impl Vm {
         if self.stack.len() != 1 {
             bail!("At the end of the program the stack should contain only a single item.");
         }
-        Ok(self.stack[0])
+        Ok(self.stack[0].clone())
     }
 }

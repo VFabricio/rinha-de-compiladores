@@ -15,8 +15,8 @@ fn main() -> Result<()> {
     let contents: File =
         from_reader(file).context("File does not contain a JSON representation of the AST.")?;
 
-    let mut vm = Vm::new(contents.name, contents.expression);
-    let result = vm.interpret()?;
+    let mut vm = Vm::new();
+    let result = vm.interpret(contents.name, contents.expression)?;
 
     println!("{}", result);
 

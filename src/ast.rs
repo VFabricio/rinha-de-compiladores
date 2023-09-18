@@ -14,8 +14,18 @@ pub struct Location {
     pub filename: String,
 }
 
-#[derive(Deserialize)]
+#[derive(Clone, Deserialize)]
+pub enum Operation {
+    Add,
+}
+
+#[derive(Clone, Deserialize)]
 #[serde(tag = "kind")]
 pub enum Term {
     Int(i32),
+    Binary {
+        op: Operation,
+        lhs: Box<Term>,
+        rhs: Box<Term>,
+    },
 }

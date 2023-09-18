@@ -3,7 +3,7 @@ use anyhow::Result;
 use rvm::{value::Value, vm::Vm};
 
 fn interpret(program: &str) -> Result<Value> {
-    let mut vm = Vm::new();
+    let vm = Vm::new();
     vm.interpret("test", program)
 }
 
@@ -14,7 +14,13 @@ fn single_int() {
 }
 
 #[test]
-fn sum() {
-    let result = interpret("2 + 3");
-    assert_eq!(result.unwrap(), Value::Integer(5));
+fn algebra() {
+    let result = interpret("(12 - 5/2) * 4");
+    assert_eq!(result.unwrap(), Value::Integer(40));
+}
+
+#[test]
+fn division_by_zero() {
+    let result = interpret("(12 - 5/2) * 4/(-3 + 3)");
+    assert!(result.is_err());
 }

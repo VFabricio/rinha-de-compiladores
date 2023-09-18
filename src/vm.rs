@@ -3,11 +3,14 @@ use rinha::{
     ast::{BinaryOp, Term},
     parser::parse_or_report,
 };
+use std::collections::HashMap;
 
 use crate::{bytecode::Instruction, value::Value};
 
 pub struct Vm {
     constants: Vec<Value>,
+    globals: HashMap<String, Value>,
+    identifiers: Vec<String>,
     stack: Vec<Value>,
 }
 
@@ -15,6 +18,8 @@ impl Vm {
     pub fn new() -> Self {
         Self {
             constants: Vec::new(),
+            globals: HashMap::new(),
+            identifiers: Vec::new(),
             stack: Vec::new(),
         }
     }
@@ -85,6 +90,18 @@ impl Vm {
                 self.compile(*t.value, bytecode);
 
                 bytecode.push(Instruction::Second);
+            }
+            Term::Let(t) => {
+                self.compile(*t.value, bytecode);
+
+                self.identifiers.push(t.name.text);
+                bytecode.push(Instruction::GlobalSet(self.identifiers.len() as u16 - 1));
+
+                self.compile(*t.next, bytecode);
+            }
+            Term::Var(t) => {
+                self.identifiers.push(t.text);
+                bytecode.push(Instruction::GlobalGet(self.identifiers.len() as u16 - 1));
             }
             _ => unimplemented!(),
         };
@@ -275,6 +292,25 @@ impl Vm {
                     } else {
                         bail!("Tried to compute `second` of a non tuple type.");
                     }
+                }
+                Instruction::GlobalSet(index) => {
+                    let identifier = self.identifiers[index as usize].clone();
+
+                    let value = self.stack.pop().ok_or(anyhow!(
+                        "Error setting global variable. No value found in the stack to be set."
+                    ))?;
+                    let _ = self.globals.insert(identifier, value);
+                }
+                Instruction::GlobalGet(index) => {
+                    let identifier = self.identifiers[index as usize].clone();
+
+                    let value = self
+                        .globals
+                        .get(&identifier)
+                        .ok_or(anyhow!("Unknown variable {identifier}."))?
+                        .clone();
+
+                    self.stack.push(value);
                 }
             }
         }

@@ -207,3 +207,18 @@ fn second_works() {
     let result2 = interpret(r#" second("foo") "#);
     assert!(result2.is_err());
 }
+
+#[test]
+fn globals_work() {
+    let result = interpret(
+        r#"
+        let foo = 42;
+        let bar = true;
+        (bar, foo)
+    "#,
+    );
+    assert_eq!(
+        result.unwrap(),
+        Value::Tuple(Box::new(Value::Bool(true)), Box::new(Value::Integer(42)))
+    );
+}

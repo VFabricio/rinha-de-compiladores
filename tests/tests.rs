@@ -120,3 +120,39 @@ fn neq_works() {
     let result3 = interpret("true != 42");
     assert_eq!(result3.unwrap(), Value::Bool(true));
 }
+
+#[test]
+fn and_works() {
+    let result = interpret("true && true");
+    assert_eq!(result.unwrap(), Value::Bool(true));
+
+    let result2 = interpret("false && false");
+    assert_eq!(result2.unwrap(), Value::Bool(false));
+
+    let result3 = interpret("true && false");
+    assert_eq!(result3.unwrap(), Value::Bool(false));
+
+    let result4 = interpret("false && true");
+    assert_eq!(result4.unwrap(), Value::Bool(false));
+
+    let result5 = interpret("42 && false");
+    assert!(result5.is_err());
+}
+
+#[test]
+fn or_works() {
+    let result = interpret("true || true");
+    assert_eq!(result.unwrap(), Value::Bool(true));
+
+    let result2 = interpret("false || false");
+    assert_eq!(result2.unwrap(), Value::Bool(false));
+
+    let result3 = interpret("true || false");
+    assert_eq!(result3.unwrap(), Value::Bool(true));
+
+    let result4 = interpret("false || true");
+    assert_eq!(result4.unwrap(), Value::Bool(true));
+
+    let result5 = interpret("42 || false");
+    assert!(result5.is_err());
+}

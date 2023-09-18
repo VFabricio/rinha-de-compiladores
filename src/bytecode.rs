@@ -14,4 +14,6 @@ pub enum Instruction {
     Lt,
     Gte,
     Lte,
+    And,
+    Or,
 }

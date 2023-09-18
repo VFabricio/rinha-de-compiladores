@@ -59,7 +59,8 @@ impl Vm {
                     BinaryOp::Lt => Instruction::Lt,
                     BinaryOp::Gte => Instruction::Gte,
                     BinaryOp::Lte => Instruction::Lte,
-                    _ => unimplemented!(),
+                    BinaryOp::And => Instruction::And,
+                    BinaryOp::Or => Instruction::Or,
                 };
                 bytecode.push(instruction);
             }
@@ -189,6 +190,25 @@ impl Vm {
 
                     if let (Value::Integer(lhs), Value::Integer(rhs)) = (lhs, rhs) {
                         self.stack.push(Value::Bool(lhs <= rhs));
+                    } else {
+                        bail!("Operands must be both integers.");
+                    }
+                }
+                // TODO: handle short-circuiting
+                Instruction::And => {
+                    let (lhs, rhs) = self.pop_operands()?;
+
+                    if let (Value::Bool(lhs), Value::Bool(rhs)) = (lhs, rhs) {
+                        self.stack.push(Value::Bool(lhs && rhs));
+                    } else {
+                        bail!("Operands must be both integers.");
+                    }
+                }
+                Instruction::Or => {
+                    let (lhs, rhs) = self.pop_operands()?;
+
+                    if let (Value::Bool(lhs), Value::Bool(rhs)) = (lhs, rhs) {
+                        self.stack.push(Value::Bool(lhs || rhs));
                     } else {
                         bail!("Operands must be both integers.");
                     }

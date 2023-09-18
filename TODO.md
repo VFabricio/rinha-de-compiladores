@@ -1,0 +1,1 @@
+- handle short-circuiting for the `and` operator. Today it always evaluates both arguments. If the first argument is truthy, and the evaluation of the second one generates side effects, these side effects will be executed, when they shouldn't.

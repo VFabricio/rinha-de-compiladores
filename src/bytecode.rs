@@ -16,4 +16,7 @@ pub enum Instruction {
     Lte,
     And,
     Or,
+    Tuple,
+    First,
+    Second,
 }

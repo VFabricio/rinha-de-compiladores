@@ -174,3 +174,36 @@ fn string_concatenation() {
     let result = interpret(r#" "foo" + 42 "#);
     assert_eq!(result.unwrap(), Value::String("foo42".to_owned()));
 }
+
+#[test]
+fn tuple_works() {
+    let result = interpret(r#" (42, (false, "foo")) "#);
+    assert_eq!(
+        result.unwrap(),
+        Value::Tuple(
+            Box::new(Value::Integer(42)),
+            Box::new(Value::Tuple(
+                Box::new(Value::Bool(false)),
+                Box::new(Value::String("foo".to_owned()))
+            ))
+        )
+    );
+}
+
+#[test]
+fn first_works() {
+    let result = interpret(r#" first((42, true)) "#);
+    assert_eq!(result.unwrap(), Value::Integer(42));
+
+    let result2 = interpret(r#" first("foo") "#);
+    assert!(result2.is_err());
+}
+
+#[test]
+fn second_works() {
+    let result = interpret(r#" second((42, true)) "#);
+    assert_eq!(result.unwrap(), Value::Bool(true));
+
+    let result2 = interpret(r#" second("foo") "#);
+    assert!(result2.is_err());
+}

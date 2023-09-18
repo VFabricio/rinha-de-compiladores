@@ -70,6 +70,22 @@ impl Vm {
                 };
                 bytecode.push(instruction);
             }
+            Term::Tuple(t) => {
+                self.compile(*t.first, bytecode);
+                self.compile(*t.second, bytecode);
+
+                bytecode.push(Instruction::Tuple);
+            }
+            Term::First(t) => {
+                self.compile(*t.value, bytecode);
+
+                bytecode.push(Instruction::First);
+            }
+            Term::Second(t) => {
+                self.compile(*t.value, bytecode);
+
+                bytecode.push(Instruction::Second);
+            }
             _ => unimplemented!(),
         };
     }
@@ -229,6 +245,35 @@ impl Vm {
                         self.stack.push(Value::Bool(lhs || rhs));
                     } else {
                         bail!("Operands must be both integers.");
+                    }
+                }
+                Instruction::Tuple => {
+                    let (first, second) = self.pop_operands()?;
+                    let value = Value::Tuple(Box::new(first), Box::new(second));
+                    self.stack.push(value);
+                }
+                Instruction::First => {
+                    let value = self
+                        .stack
+                        .pop()
+                        .ok_or(anyhow!("Expected operand, but stack was empty."))?;
+
+                    if let Value::Tuple(first, _) = value {
+                        self.stack.push(*first);
+                    } else {
+                        bail!("Tried to compute `first` of a non tuple type.");
+                    }
+                }
+                Instruction::Second => {
+                    let value = self
+                        .stack
+                        .pop()
+                        .ok_or(anyhow!("Expected operand, but stack was empty."))?;
+
+                    if let Value::Tuple(_, second) = value {
+                        self.stack.push(*second);
+                    } else {
+                        bail!("Tried to compute `second` of a non tuple type.");
                     }
                 }
             }

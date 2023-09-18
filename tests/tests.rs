@@ -36,3 +36,45 @@ fn false_works() {
     let result = interpret("false");
     assert_eq!(result.unwrap(), Value::Bool(false));
 }
+
+#[test]
+fn gt_works() {
+    let result = interpret("2 > 1");
+    assert_eq!(result.unwrap(), Value::Bool(true));
+
+    let result2 = interpret("1 > 2");
+    assert_eq!(result2.unwrap(), Value::Bool(false));
+}
+
+#[test]
+fn lt_works() {
+    let result = interpret("1 < 2");
+    assert_eq!(result.unwrap(), Value::Bool(true));
+
+    let result2 = interpret("2 < 1");
+    assert_eq!(result2.unwrap(), Value::Bool(false));
+}
+
+#[test]
+fn gte_works() {
+    let result = interpret("2 >= 1");
+    assert_eq!(result.unwrap(), Value::Bool(true));
+
+    let result2 = interpret("1 >= 2");
+    assert_eq!(result2.unwrap(), Value::Bool(false));
+
+    let result3 = interpret("1 >= 1");
+    assert_eq!(result3.unwrap(), Value::Bool(true));
+}
+
+#[test]
+fn lte_works() {
+    let result = interpret("1 <= 2");
+    assert_eq!(result.unwrap(), Value::Bool(true));
+
+    let result2 = interpret("2 <= 1");
+    assert_eq!(result2.unwrap(), Value::Bool(false));
+
+    let result3 = interpret("1 <= 1");
+    assert_eq!(result3.unwrap(), Value::Bool(true));
+}

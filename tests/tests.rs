@@ -24,3 +24,15 @@ fn division_by_zero() {
     let result = interpret("(12 - 5/2) * 4/(-3 + 3)");
     assert!(result.is_err());
 }
+
+#[test]
+fn true_works() {
+    let result = interpret("true");
+    assert_eq!(result.unwrap(), Value::Bool(true));
+}
+
+#[test]
+fn false_works() {
+    let result = interpret("false");
+    assert_eq!(result.unwrap(), Value::Bool(false));
+}

@@ -35,6 +35,14 @@ impl Vm {
 
                 bytecode.push(Instruction::Constant(self.constants.len() as u16 - 1));
             }
+            Term::Bool(b) => {
+                let instruction = if b.value {
+                    Instruction::True
+                } else {
+                    Instruction::False
+                };
+                bytecode.push(instruction);
+            }
             Term::Binary(b) => {
                 self.compile(*b.lhs, bytecode);
                 self.compile(*b.rhs, bytecode);
@@ -78,6 +86,14 @@ impl Vm {
             match instruction {
                 Instruction::Constant(index) => {
                     let value = self.constants[index as usize];
+                    self.stack.push(value);
+                }
+                Instruction::True => {
+                    let value = Value::Bool(true);
+                    self.stack.push(value);
+                }
+                Instruction::False => {
+                    let value = Value::Bool(false);
                     self.stack.push(value);
                 }
                 Instruction::Add => {

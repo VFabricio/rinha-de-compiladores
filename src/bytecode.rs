@@ -19,6 +19,7 @@ pub enum Instruction {
     Tuple,
     First,
     Second,
+    Print,
     GlobalGet(u16),
     GlobalSet(u16),
 }

@@ -222,3 +222,12 @@ fn globals_work() {
         Value::Tuple(Box::new(Value::Bool(true)), Box::new(Value::Integer(42)))
     );
 }
+
+#[test]
+fn print_works() {
+    let result = interpret(r#" print((true, 42)) "#);
+    assert_eq!(
+        result.unwrap(),
+        Value::Tuple(Box::new(Value::Bool(true)), Box::new(Value::Integer(42)))
+    );
+}

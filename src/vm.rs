@@ -103,6 +103,10 @@ impl Vm {
                 self.identifiers.push(t.text);
                 bytecode.push(Instruction::GlobalGet(self.identifiers.len() as u16 - 1));
             }
+            Term::Print(t) => {
+                self.compile(*t.value, bytecode)?;
+                bytecode.push(Instruction::Print);
+            }
             Term::Error(e) => bail!(anyhow!(e.message)),
             _ => unimplemented!(),
         };
@@ -294,6 +298,12 @@ impl Vm {
                     } else {
                         bail!("Tried to compute `second` of a non tuple type.");
                     }
+                }
+                Instruction::Print => {
+                    let value = self.stack.last().ok_or(anyhow!(
+                        "Error printing. No value found in the stack to be set."
+                    ))?;
+                    println!("{value}");
                 }
                 Instruction::GlobalSet(index) => {
                     let identifier = self.identifiers[index as usize].clone();

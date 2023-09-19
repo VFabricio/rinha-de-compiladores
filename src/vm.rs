@@ -28,6 +28,7 @@ impl Vm {
         let file = parse_or_report(filename, contents)?;
         let mut bytecode = Vec::new();
         self.compile(file.expression, &mut bytecode)?;
+
         let result = self.run(bytecode)?;
         Ok(result)
     }
@@ -107,6 +108,39 @@ impl Vm {
                 self.compile(*t.value, bytecode)?;
                 bytecode.push(Instruction::Print);
             }
+            Term::If(t) => {
+                self.compile(*t.condition, bytecode)?;
+                bytecode.push(Instruction::If(0));
+
+                let if_address = bytecode.len() - 1;
+                let if_address = if if_address > i32::MAX as usize {
+                    bail!("Instruction too long.");
+                } else {
+                    if_address as u32
+                };
+
+                self.compile(*t.then, bytecode)?;
+                bytecode.push(Instruction::Jump(0));
+
+                let jump_address = bytecode.len() - 1;
+                let jump_address = if jump_address > i32::MAX as usize {
+                    bail!("Instruction too long.");
+                } else {
+                    jump_address as u32
+                };
+
+                bytecode[if_address as usize] = Instruction::If(jump_address - if_address);
+
+                self.compile(*t.otherwise, bytecode)?;
+                let after_address = bytecode.len() - 1;
+                let after_address = if after_address > i32::MAX as usize {
+                    bail!("Instruction too long.");
+                } else {
+                    after_address as u32
+                };
+
+                bytecode[jump_address as usize] = Instruction::Jump(after_address - jump_address);
+            }
             Term::Error(e) => bail!(anyhow!(e.message)),
             _ => unimplemented!(),
         };
@@ -128,7 +162,13 @@ impl Vm {
     }
 
     fn run(mut self, bytecode: Vec<Instruction>) -> Result<Value> {
+        let mut skip = 0;
         for instruction in bytecode {
+            if skip > 0 {
+                skip -= 1;
+                continue;
+            }
+
             match instruction {
                 Instruction::Constant(index) => {
                     let value = self.constants[index as usize].clone();
@@ -323,6 +363,24 @@ impl Vm {
                         .clone();
 
                     self.stack.push(value);
+                }
+                Instruction::If(jump) => {
+                    let value = self.stack.pop().ok_or(anyhow!(
+                        "Error in if. No value found in the stack to be tested."
+                    ))?;
+
+                    if let Value::Bool(b) = value {
+                        if !b {
+                            skip = jump;
+                            continue;
+                        }
+                    } else {
+                        bail!("Type error: if condition must evaluate to a boolean.");
+                    }
+                }
+                Instruction::Jump(jump) => {
+                    skip = jump;
+                    continue;
                 }
             }
         }

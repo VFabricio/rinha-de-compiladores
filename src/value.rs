@@ -14,7 +14,7 @@ impl fmt::Display for Value {
             Value::Bool(b) => write!(f, "{b}"),
             Value::Integer(i) => write!(f, "{i}"),
             Value::String(s) => write!(f, "{s}"),
-            Value::Tuple(t1, t2) => write!(f, "({}, {})", t1, t2),
+            Value::Tuple(t1, t2) => write!(f, "({t1}, {t2})"),
         }
     }
 }

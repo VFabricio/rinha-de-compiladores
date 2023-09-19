@@ -22,4 +22,6 @@ pub enum Instruction {
     Print,
     GlobalGet(u16),
     GlobalSet(u16),
+    If(u32),
+    Jump(u32),
 }

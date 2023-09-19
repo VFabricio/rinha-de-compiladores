@@ -231,3 +231,31 @@ fn print_works() {
         Value::Tuple(Box::new(Value::Bool(true)), Box::new(Value::Integer(42)))
     );
 }
+
+#[test]
+fn if_works() {
+    let result = interpret(
+        r#"
+        if (42 > 0) {
+            let a = "foo";
+            a + "bar"
+        } else {
+            1
+        }
+    "#,
+    );
+    assert_eq!(result.unwrap(), Value::String("foobar".to_owned()));
+
+    let result2 = interpret(
+        r#"
+        if (42 < 0) {
+            let a = "foo";
+            a + "bar"
+        } else {
+            let b = 1;
+            b + b
+        }
+    "#,
+    );
+    assert_eq!(result2.unwrap(), Value::Integer(2));
+}

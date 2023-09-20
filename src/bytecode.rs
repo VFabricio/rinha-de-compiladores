@@ -1,4 +1,4 @@
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Instruction {
     Constant(u16),
     True,
@@ -22,6 +22,9 @@ pub enum Instruction {
     Print,
     GlobalGet(u16),
     GlobalSet(u16),
+    LocalGet(u16, u16),
     If(u32),
     Jump(u32),
+    Closure(u16),
+    Call(u16),
 }

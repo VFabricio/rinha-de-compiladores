@@ -1,167 +1,90 @@
 use anyhow::{anyhow, bail, Result};
-use rinha::{
-    ast::{BinaryOp, Term},
-    parser::parse_or_report,
-};
+use rinha::{ast::Term, parser::parse_or_report};
 use std::collections::HashMap;
 
-use crate::{bytecode::Instruction, value::Value};
+use crate::{bytecode::Instruction, compiler::Compiler, function::Function, value::Value};
 
-pub struct Vm {
-    constants: Vec<Value>,
-    globals: HashMap<String, Value>,
+pub struct Vm<'a> {
+    constants: Vec<Value<'a>>,
+    pub functions: Vec<Function>,
     identifiers: Vec<String>,
-    stack: Vec<Value>,
+    frame_index: usize,
 }
 
-impl Vm {
+macro_rules! pop_operands {
+    ($stack: ident) => {{
+        let rhs = $stack
+            .pop()
+            .ok_or(anyhow!("Expected operand, but stack was empty."))?;
+
+        let lhs = $stack
+            .pop()
+            .ok_or(anyhow!("Expected operand, but stack was empty."))?;
+
+        let result: Result<(Value<'_>, Value<'_>)> = Ok((lhs, rhs));
+        result
+    }};
+}
+
+impl<'a> Vm<'a> {
     pub fn new() -> Self {
         Self {
             constants: Vec::new(),
-            globals: HashMap::new(),
+            functions: Vec::new(),
             identifiers: Vec::new(),
-            stack: Vec::new(),
+            frame_index: 0,
         }
     }
 
-    pub fn interpret(mut self, filename: &str, contents: &str) -> Result<Value> {
+    pub fn interpret(&'a mut self, filename: &str, contents: &str) -> Result<Value<'a>> {
         let file = parse_or_report(filename, contents)?;
-        let mut bytecode = Vec::new();
-        self.compile(file.expression, &mut bytecode)?;
+        let bytecode = self.compile(file.expression)?;
 
-        let result = self.run(bytecode)?;
+        let result = self.run(&bytecode, Vec::new(), &HashMap::new(), false)?;
         Ok(result)
     }
 
-    fn compile(&mut self, term: Term, bytecode: &mut Vec<Instruction>) -> Result<()> {
-        match term {
-            Term::Int(i) => {
-                let value = Value::Integer(i.value);
-                self.constants.push(value);
+    pub fn create_constant(&mut self, value: Value<'a>) -> Result<u16> {
+        if self.constants.len() >= u16::MAX as usize {
+            bail!("Cannot create more than {} constants.", u16::MAX);
+        }
 
-                bytecode.push(Instruction::Constant(self.constants.len() as u16 - 1));
-            }
-            Term::Bool(b) => {
-                let instruction = if b.value {
-                    Instruction::True
-                } else {
-                    Instruction::False
-                };
-                bytecode.push(instruction);
-            }
-            Term::Str(s) => {
-                let value = Value::String(s.value);
-                self.constants.push(value);
+        let position = self.constants.iter().position(|v| *v == value);
 
-                bytecode.push(Instruction::Constant(self.constants.len() as u16 - 1));
-            }
-            Term::Binary(b) => {
-                self.compile(*b.lhs, bytecode)?;
-                self.compile(*b.rhs, bytecode)?;
-
-                let instruction = match b.op {
-                    BinaryOp::Add => Instruction::Add,
-                    BinaryOp::Sub => Instruction::Sub,
-                    BinaryOp::Mul => Instruction::Mul,
-                    BinaryOp::Div => Instruction::Div,
-                    BinaryOp::Rem => Instruction::Rem,
-                    BinaryOp::Eq => Instruction::Eq,
-                    BinaryOp::Neq => Instruction::Neq,
-                    BinaryOp::Gt => Instruction::Gt,
-                    BinaryOp::Lt => Instruction::Lt,
-                    BinaryOp::Gte => Instruction::Gte,
-                    BinaryOp::Lte => Instruction::Lte,
-                    BinaryOp::And => Instruction::And,
-                    BinaryOp::Or => Instruction::Or,
-                };
-                bytecode.push(instruction);
-            }
-            Term::Tuple(t) => {
-                self.compile(*t.first, bytecode)?;
-                self.compile(*t.second, bytecode)?;
-
-                bytecode.push(Instruction::Tuple);
-            }
-            Term::First(t) => {
-                self.compile(*t.value, bytecode)?;
-
-                bytecode.push(Instruction::First);
-            }
-            Term::Second(t) => {
-                self.compile(*t.value, bytecode)?;
-
-                bytecode.push(Instruction::Second);
-            }
-            Term::Let(t) => {
-                self.compile(*t.value, bytecode)?;
-
-                self.identifiers.push(t.name.text);
-                bytecode.push(Instruction::GlobalSet(self.identifiers.len() as u16 - 1));
-
-                self.compile(*t.next, bytecode)?;
-            }
-            Term::Var(t) => {
-                self.identifiers.push(t.text);
-                bytecode.push(Instruction::GlobalGet(self.identifiers.len() as u16 - 1));
-            }
-            Term::Print(t) => {
-                self.compile(*t.value, bytecode)?;
-                bytecode.push(Instruction::Print);
-            }
-            Term::If(t) => {
-                self.compile(*t.condition, bytecode)?;
-                bytecode.push(Instruction::If(0));
-
-                let if_address = bytecode.len() - 1;
-                let if_address = if if_address > i32::MAX as usize {
-                    bail!("Instruction too long.");
-                } else {
-                    if_address as u32
-                };
-
-                self.compile(*t.then, bytecode)?;
-                bytecode.push(Instruction::Jump(0));
-
-                let jump_address = bytecode.len() - 1;
-                let jump_address = if jump_address > i32::MAX as usize {
-                    bail!("Instruction too long.");
-                } else {
-                    jump_address as u32
-                };
-
-                bytecode[if_address as usize] = Instruction::If(jump_address - if_address);
-
-                self.compile(*t.otherwise, bytecode)?;
-                let after_address = bytecode.len() - 1;
-                let after_address = if after_address > i32::MAX as usize {
-                    bail!("Instruction too long.");
-                } else {
-                    after_address as u32
-                };
-
-                bytecode[jump_address as usize] = Instruction::Jump(after_address - jump_address);
-            }
-            Term::Error(e) => bail!(anyhow!(e.message)),
-            _ => unimplemented!(),
-        };
-        Ok(())
+        Ok(position.unwrap_or_else(|| {
+            self.constants.push(value);
+            self.constants.len() - 1
+        }) as u16)
     }
 
-    fn pop_operands(&mut self) -> Result<(Value, Value)> {
-        let rhs = self
-            .stack
-            .pop()
-            .ok_or(anyhow!("Expected operand, but stack was empty."))?;
+    pub fn create_identifier(&mut self, identifier: String) -> Result<u16> {
+        if self.identifiers.len() >= u16::MAX as usize {
+            bail!("Cannot create more than {} identifiers.", u16::MAX);
+        }
 
-        let lhs = self
-            .stack
-            .pop()
-            .ok_or(anyhow!("Expected operand, but stack was empty."))?;
+        let position = self.identifiers.iter().position(|i| *i == identifier);
 
-        Ok((lhs, rhs))
+        Ok(position.unwrap_or_else(|| {
+            self.identifiers.push(identifier);
+            self.identifiers.len() - 1
+        }) as u16)
     }
 
-    fn run(mut self, bytecode: Vec<Instruction>) -> Result<Value> {
+    fn compile(&mut self, term: Term) -> Result<Vec<Instruction>> {
+        let mut compiler = Compiler::new(None);
+        compiler.compile(term, self)
+    }
+
+    fn run(
+        &'a self,
+        bytecode: &[Instruction],
+        stack: Vec<Value<'a>>,
+        global_references: &HashMap<String, Value<'a>>,
+        is_function: bool,
+    ) -> Result<Value<'a>> {
+        let mut globals = HashMap::new();
+        let mut stack = stack;
+
         let mut skip = 0;
         for instruction in bytecode {
             if skip > 0 {
@@ -169,34 +92,34 @@ impl Vm {
                 continue;
             }
 
-            match instruction {
+            match *instruction {
                 Instruction::Constant(index) => {
                     let value = self.constants[index as usize].clone();
-                    self.stack.push(value);
+                    stack.push(value);
                 }
                 Instruction::True => {
                     let value = Value::Bool(true);
-                    self.stack.push(value);
+                    stack.push(value);
                 }
                 Instruction::False => {
                     let value = Value::Bool(false);
-                    self.stack.push(value);
+                    stack.push(value);
                 }
                 Instruction::Add => {
-                    let (lhs, rhs) = self.pop_operands()?;
+                    let (lhs, rhs) = pop_operands!(stack)?;
 
                     match (lhs, rhs) {
                         (Value::Integer(lhs), Value::Integer(rhs)) => {
-                            self.stack.push(Value::Integer(lhs + rhs));
+                            stack.push(Value::Integer(lhs + rhs));
                         }
                         (Value::String(lhs), Value::Integer(rhs)) => {
-                            self.stack.push(Value::String(format!("{lhs}{rhs}")));
+                            stack.push(Value::String(format!("{lhs}{rhs}")));
                         }
                         (Value::Integer(lhs), Value::String(rhs)) => {
-                            self.stack.push(Value::String(format!("{lhs}{rhs}")));
+                            stack.push(Value::String(format!("{lhs}{rhs}")));
                         }
                         (Value::String(lhs), Value::String(rhs)) => {
-                            self.stack.push(Value::String(format!("{lhs}{rhs}")));
+                            stack.push(Value::String(format!("{lhs}{rhs}")));
                         }
                         _ => {
                             bail!("Wrong types for add.");
@@ -204,143 +127,141 @@ impl Vm {
                     }
                 }
                 Instruction::Sub => {
-                    let (lhs, rhs) = self.pop_operands()?;
+                    let (lhs, rhs) = pop_operands!(stack)?;
 
                     if let (Value::Integer(lhs), Value::Integer(rhs)) = (lhs, rhs) {
-                        self.stack.push(Value::Integer(lhs - rhs));
+                        stack.push(Value::Integer(lhs - rhs));
                     } else {
                         bail!("Operands must be both integers.");
                     }
                 }
                 Instruction::Mul => {
-                    let (lhs, rhs) = self.pop_operands()?;
+                    let (lhs, rhs) = pop_operands!(stack)?;
 
                     if let (Value::Integer(lhs), Value::Integer(rhs)) = (lhs, rhs) {
-                        self.stack.push(Value::Integer(lhs * rhs));
+                        stack.push(Value::Integer(lhs * rhs));
                     } else {
                         bail!("Operands must be both integers.");
                     }
                 }
                 Instruction::Div => {
-                    let (lhs, rhs) = self.pop_operands()?;
+                    let (lhs, rhs) = pop_operands!(stack)?;
 
                     if let (Value::Integer(lhs), Value::Integer(rhs)) = (lhs, rhs) {
                         let result = lhs
                             .checked_div(rhs)
                             .ok_or(anyhow!("Attempted to divide by zero"))?;
 
-                        self.stack.push(Value::Integer(result));
+                        stack.push(Value::Integer(result));
                     } else {
                         bail!("Operands must be both integers.");
                     }
                 }
                 Instruction::Rem => {
-                    let (lhs, rhs) = self.pop_operands()?;
+                    let (lhs, rhs) = pop_operands!(stack)?;
 
                     if let (Value::Integer(lhs), Value::Integer(rhs)) = (lhs, rhs) {
                         let result = lhs
                             .checked_rem(rhs)
                             .ok_or(anyhow!("Attempted to take remainder by zero"))?;
 
-                        self.stack.push(Value::Integer(result));
+                        stack.push(Value::Integer(result));
                     } else {
                         bail!("Operands must be both integers.");
                     }
                 }
                 Instruction::Eq => {
-                    let (lhs, rhs) = self.pop_operands()?;
-                    self.stack.push(Value::Bool(lhs == rhs));
+                    let (lhs, rhs) = pop_operands!(stack)?;
+                    stack.push(Value::Bool(lhs == rhs));
                 }
                 Instruction::Neq => {
-                    let (lhs, rhs) = self.pop_operands()?;
-                    self.stack.push(Value::Bool(lhs != rhs));
+                    let (lhs, rhs) = pop_operands!(stack)?;
+                    stack.push(Value::Bool(lhs != rhs));
                 }
                 Instruction::Gt => {
-                    let (lhs, rhs) = self.pop_operands()?;
+                    let (lhs, rhs) = pop_operands!(stack)?;
 
                     if let (Value::Integer(lhs), Value::Integer(rhs)) = (lhs, rhs) {
-                        self.stack.push(Value::Bool(lhs > rhs));
+                        stack.push(Value::Bool(lhs > rhs));
                     } else {
                         bail!("Operands must be both integers.");
                     }
                 }
                 Instruction::Lt => {
-                    let (lhs, rhs) = self.pop_operands()?;
+                    let (lhs, rhs) = pop_operands!(stack)?;
 
                     if let (Value::Integer(lhs), Value::Integer(rhs)) = (lhs, rhs) {
-                        self.stack.push(Value::Bool(lhs < rhs));
+                        stack.push(Value::Bool(lhs < rhs));
                     } else {
                         bail!("Operands must be both integers.");
                     }
                 }
                 Instruction::Gte => {
-                    let (lhs, rhs) = self.pop_operands()?;
+                    let (lhs, rhs) = pop_operands!(stack)?;
 
                     if let (Value::Integer(lhs), Value::Integer(rhs)) = (lhs, rhs) {
-                        self.stack.push(Value::Bool(lhs >= rhs));
+                        stack.push(Value::Bool(lhs >= rhs));
                     } else {
                         bail!("Operands must be both integers.");
                     }
                 }
                 Instruction::Lte => {
-                    let (lhs, rhs) = self.pop_operands()?;
+                    let (lhs, rhs) = pop_operands!(stack)?;
 
                     if let (Value::Integer(lhs), Value::Integer(rhs)) = (lhs, rhs) {
-                        self.stack.push(Value::Bool(lhs <= rhs));
+                        stack.push(Value::Bool(lhs <= rhs));
                     } else {
                         bail!("Operands must be both integers.");
                     }
                 }
                 // TODO: handle short-circuiting
                 Instruction::And => {
-                    let (lhs, rhs) = self.pop_operands()?;
+                    let (lhs, rhs) = pop_operands!(stack)?;
 
                     if let (Value::Bool(lhs), Value::Bool(rhs)) = (lhs, rhs) {
-                        self.stack.push(Value::Bool(lhs && rhs));
+                        stack.push(Value::Bool(lhs && rhs));
                     } else {
                         bail!("Operands must be both integers.");
                     }
                 }
                 Instruction::Or => {
-                    let (lhs, rhs) = self.pop_operands()?;
+                    let (lhs, rhs) = pop_operands!(stack)?;
 
                     if let (Value::Bool(lhs), Value::Bool(rhs)) = (lhs, rhs) {
-                        self.stack.push(Value::Bool(lhs || rhs));
+                        stack.push(Value::Bool(lhs || rhs));
                     } else {
                         bail!("Operands must be both integers.");
                     }
                 }
                 Instruction::Tuple => {
-                    let (first, second) = self.pop_operands()?;
+                    let (first, second) = pop_operands!(stack)?;
                     let value = Value::Tuple(Box::new(first), Box::new(second));
-                    self.stack.push(value);
+                    stack.push(value);
                 }
                 Instruction::First => {
-                    let value = self
-                        .stack
+                    let value = stack
                         .pop()
                         .ok_or(anyhow!("Expected operand, but stack was empty."))?;
 
                     if let Value::Tuple(first, _) = value {
-                        self.stack.push(*first);
+                        stack.push(*first);
                     } else {
                         bail!("Tried to compute `first` of a non tuple type.");
                     }
                 }
                 Instruction::Second => {
-                    let value = self
-                        .stack
+                    let value = stack
                         .pop()
                         .ok_or(anyhow!("Expected operand, but stack was empty."))?;
 
                     if let Value::Tuple(_, second) = value {
-                        self.stack.push(*second);
+                        stack.push(*second);
                     } else {
                         bail!("Tried to compute `second` of a non tuple type.");
                     }
                 }
                 Instruction::Print => {
-                    let value = self.stack.last().ok_or(anyhow!(
+                    let value = stack.last().ok_or(anyhow!(
                         "Error printing. No value found in the stack to be set."
                     ))?;
                     println!("{value}");
@@ -348,24 +269,38 @@ impl Vm {
                 Instruction::GlobalSet(index) => {
                     let identifier = self.identifiers[index as usize].clone();
 
-                    let value = self.stack.pop().ok_or(anyhow!(
+                    let value = stack.pop().ok_or(anyhow!(
                         "Error setting global variable. No value found in the stack to be set."
                     ))?;
-                    let _ = self.globals.insert(identifier, value);
+                    let _ = globals.insert(identifier, value);
                 }
                 Instruction::GlobalGet(index) => {
                     let identifier = self.identifiers[index as usize].clone();
 
-                    let value = self
-                        .globals
+                    let global_references = if is_function {
+                        global_references
+                    } else {
+                        &globals
+                    };
+
+                    let value = global_references
                         .get(&identifier)
                         .ok_or(anyhow!("Unknown variable {identifier}."))?
                         .clone();
 
-                    self.stack.push(value);
+                    stack.push(value);
+                }
+                Instruction::LocalGet(index, identifier_index) => {
+                    let absolute_index = self.frame_index + index as usize;
+                    if absolute_index >= stack.len() {
+                        let identifier = &self.identifiers[identifier_index as usize];
+                        bail!("Variable {identifier} not found.");
+                    }
+                    let value = stack[absolute_index].clone();
+                    stack.push(value);
                 }
                 Instruction::If(jump) => {
-                    let value = self.stack.pop().ok_or(anyhow!(
+                    let value = stack.pop().ok_or(anyhow!(
                         "Error in if. No value found in the stack to be tested."
                     ))?;
 
@@ -380,14 +315,45 @@ impl Vm {
                 }
                 Instruction::Jump(jump) => {
                     skip = jump;
-                    continue;
+                }
+                Instruction::Closure(index) => {
+                    let function = &self.functions[index as usize];
+                    let closure = Value::Closure(function);
+                    stack.push(closure);
+                }
+                Instruction::Call(arity) => {
+                    let mut child_stack = Vec::new();
+
+                    for _ in 0..arity {
+                        let value = stack.pop().ok_or(anyhow!("Missing arguments."))?;
+                        child_stack.push(value);
+                    }
+
+                    let closure = stack.pop().ok_or(anyhow!("Missing function."))?;
+
+                    if let Value::Closure(f) = closure {
+                        if f.arity != arity {
+                            bail!("Function called with wrong number of arguments.");
+                        }
+
+                        let global_references = if is_function {
+                            global_references
+                        } else {
+                            &globals
+                        };
+
+                        let value = self.run(&f.bytecode, child_stack, global_references, true)?;
+                        stack.push(value);
+                    } else {
+                        bail!("Attempted to call a value that is not a function.");
+                    }
                 }
             }
         }
 
-        if self.stack.len() != 1 {
-            bail!("At the end of the program the stack should contain only a single item.");
-        }
-        Ok(self.stack[0].clone())
+        Ok(stack
+            .last()
+            .expect("At the end of the execution, there must be at least one value in the stack.")
+            .clone())
     }
 }

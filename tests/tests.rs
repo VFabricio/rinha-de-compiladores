@@ -2,239 +2,288 @@ use anyhow::Result;
 
 use rvm::{value::Value, vm::Vm};
 
-fn interpret(program: &str) -> Result<Value> {
-    let vm = Vm::new();
-    vm.interpret("test", program)
+fn compile_and_assert(program: &str, assert: impl Fn(Result<Value>) -> ()) {
+    let mut vm = Vm::new();
+    let result = vm.interpret("test", program);
+    assert(result);
 }
 
 #[test]
 fn single_int() {
-    let result = interpret("42");
-    assert_eq!(result.unwrap(), Value::Integer(42));
+    compile_and_assert("42", |result| {
+        assert_eq!(result.unwrap(), Value::Integer(42));
+    })
 }
 
 #[test]
 fn algebra() {
-    let result = interpret("(12 - 5/2) * 4 + 19 % 4");
-    assert_eq!(result.unwrap(), Value::Integer(43));
+    compile_and_assert("(12 - 5/2) * 4 + 19 % 4", |result| {
+        assert_eq!(result.unwrap(), Value::Integer(43));
+    })
 }
 
 #[test]
 fn division_by_zero() {
-    let result = interpret("(12 - 5/2) * 4 / (-3 + 3)");
-    assert!(result.is_err());
+    compile_and_assert("(12 - 5/2) * 4 / (-3 + 3)", |result| {
+        assert!(result.is_err());
+    })
 }
 
 #[test]
 fn remainder_by_zero() {
-    let result = interpret("(12 - 5/2) * 4 % (-3 + 3)");
-    assert!(result.is_err());
+    compile_and_assert("(12 - 5/2) * 4 % (-3 + 3)", |result| {
+        assert!(result.is_err());
+    })
 }
 
 #[test]
 fn true_works() {
-    let result = interpret("true");
-    assert_eq!(result.unwrap(), Value::Bool(true));
+    compile_and_assert("true", |result| {
+        assert_eq!(result.unwrap(), Value::Bool(true));
+    })
 }
 
 #[test]
 fn false_works() {
-    let result = interpret("false");
-    assert_eq!(result.unwrap(), Value::Bool(false));
+    compile_and_assert("false", |result| {
+        assert_eq!(result.unwrap(), Value::Bool(false));
+    })
 }
 
 #[test]
 fn gt_works() {
-    let result = interpret("2 > 1");
-    assert_eq!(result.unwrap(), Value::Bool(true));
+    compile_and_assert("2 > 1", |result| {
+        assert_eq!(result.unwrap(), Value::Bool(true));
+    });
 
-    let result2 = interpret("1 > 2");
-    assert_eq!(result2.unwrap(), Value::Bool(false));
+    compile_and_assert("1 > 2", |result| {
+        assert_eq!(result.unwrap(), Value::Bool(false));
+    });
 }
 
 #[test]
 fn lt_works() {
-    let result = interpret("1 < 2");
-    assert_eq!(result.unwrap(), Value::Bool(true));
+    compile_and_assert("1 < 2", |result| {
+        assert_eq!(result.unwrap(), Value::Bool(true));
+    });
 
-    let result2 = interpret("2 < 1");
-    assert_eq!(result2.unwrap(), Value::Bool(false));
+    compile_and_assert("2 < 1", |result| {
+        assert_eq!(result.unwrap(), Value::Bool(false));
+    });
 }
 
 #[test]
 fn gte_works() {
-    let result = interpret("2 >= 1");
-    assert_eq!(result.unwrap(), Value::Bool(true));
+    compile_and_assert("2 >= 1", |result| {
+        assert_eq!(result.unwrap(), Value::Bool(true));
+    });
 
-    let result2 = interpret("1 >= 2");
-    assert_eq!(result2.unwrap(), Value::Bool(false));
+    compile_and_assert("1 >= 2", |result| {
+        assert_eq!(result.unwrap(), Value::Bool(false));
+    });
 
-    let result3 = interpret("1 >= 1");
-    assert_eq!(result3.unwrap(), Value::Bool(true));
+    compile_and_assert("1 >= 1", |result| {
+        assert_eq!(result.unwrap(), Value::Bool(true));
+    });
 }
 
 #[test]
 fn lte_works() {
-    let result = interpret("1 <= 2");
-    assert_eq!(result.unwrap(), Value::Bool(true));
+    compile_and_assert("1 <= 2", |result| {
+        assert_eq!(result.unwrap(), Value::Bool(true));
+    });
 
-    let result2 = interpret("2 <= 1");
-    assert_eq!(result2.unwrap(), Value::Bool(false));
+    compile_and_assert("2 <= 1", |result| {
+        assert_eq!(result.unwrap(), Value::Bool(false));
+    });
 
-    let result3 = interpret("1 <= 1");
-    assert_eq!(result3.unwrap(), Value::Bool(true));
+    compile_and_assert("1 <= 1", |result| {
+        assert_eq!(result.unwrap(), Value::Bool(true));
+    });
 }
 
 #[test]
 fn eq_works() {
-    let result = interpret("42 == 42");
-    assert_eq!(result.unwrap(), Value::Bool(true));
+    compile_and_assert("42 == 42", |result| {
+        assert_eq!(result.unwrap(), Value::Bool(true));
+    });
 
-    let result2 = interpret("false == false");
-    assert_eq!(result2.unwrap(), Value::Bool(true));
+    compile_and_assert("false == false", |result| {
+        assert_eq!(result.unwrap(), Value::Bool(true));
+    });
 
-    let result3 = interpret("42 == 0");
-    assert_eq!(result3.unwrap(), Value::Bool(false));
+    compile_and_assert("42 == 0", |result| {
+        assert_eq!(result.unwrap(), Value::Bool(false));
+    });
 
-    let result4 = interpret("true == false");
-    assert_eq!(result4.unwrap(), Value::Bool(false));
+    compile_and_assert("true == false", |result| {
+        assert_eq!(result.unwrap(), Value::Bool(false));
+    });
 
-    let result3 = interpret("true == 42");
-    assert_eq!(result3.unwrap(), Value::Bool(false));
+    compile_and_assert("true == 42", |result| {
+        assert_eq!(result.unwrap(), Value::Bool(false));
+    });
 }
 
 #[test]
 fn neq_works() {
-    let result = interpret("42 != 0");
-    assert_eq!(result.unwrap(), Value::Bool(true));
+    compile_and_assert("42 != 0", |result| {
+        assert_eq!(result.unwrap(), Value::Bool(true));
+    });
 
-    let result2 = interpret("false != true");
-    assert_eq!(result2.unwrap(), Value::Bool(true));
+    compile_and_assert("false != true", |result| {
+        assert_eq!(result.unwrap(), Value::Bool(true));
+    });
 
-    let result3 = interpret("42 != 42");
-    assert_eq!(result3.unwrap(), Value::Bool(false));
+    compile_and_assert("42 != 42", |result| {
+        assert_eq!(result.unwrap(), Value::Bool(false));
+    });
 
-    let result4 = interpret("false != false");
-    assert_eq!(result4.unwrap(), Value::Bool(false));
+    compile_and_assert("false != false", |result| {
+        assert_eq!(result.unwrap(), Value::Bool(false));
+    });
 
-    let result3 = interpret("true != 42");
-    assert_eq!(result3.unwrap(), Value::Bool(true));
+    compile_and_assert("true != 42", |result| {
+        assert_eq!(result.unwrap(), Value::Bool(true));
+    });
 }
 
 #[test]
 fn and_works() {
-    let result = interpret("true && true");
-    assert_eq!(result.unwrap(), Value::Bool(true));
+    compile_and_assert("true && true", |result| {
+        assert_eq!(result.unwrap(), Value::Bool(true));
+    });
 
-    let result2 = interpret("false && false");
-    assert_eq!(result2.unwrap(), Value::Bool(false));
+    compile_and_assert("false && false", |result| {
+        assert_eq!(result.unwrap(), Value::Bool(false));
+    });
 
-    let result3 = interpret("true && false");
-    assert_eq!(result3.unwrap(), Value::Bool(false));
+    compile_and_assert("true && false", |result| {
+        assert_eq!(result.unwrap(), Value::Bool(false));
+    });
 
-    let result4 = interpret("false && true");
-    assert_eq!(result4.unwrap(), Value::Bool(false));
+    compile_and_assert("false && true", |result| {
+        assert_eq!(result.unwrap(), Value::Bool(false));
+    });
 
-    let result5 = interpret("42 && false");
-    assert!(result5.is_err());
+    compile_and_assert("42 && false", |result| {
+        assert!(result.is_err());
+    });
 }
 
 #[test]
 fn or_works() {
-    let result = interpret("true || true");
-    assert_eq!(result.unwrap(), Value::Bool(true));
+    compile_and_assert("true || true", |result| {
+        assert_eq!(result.unwrap(), Value::Bool(true));
+    });
 
-    let result2 = interpret("false || false");
-    assert_eq!(result2.unwrap(), Value::Bool(false));
+    compile_and_assert("false || false", |result| {
+        assert_eq!(result.unwrap(), Value::Bool(false));
+    });
 
-    let result3 = interpret("true || false");
-    assert_eq!(result3.unwrap(), Value::Bool(true));
+    compile_and_assert("true || false", |result| {
+        assert_eq!(result.unwrap(), Value::Bool(true));
+    });
 
-    let result4 = interpret("false || true");
-    assert_eq!(result4.unwrap(), Value::Bool(true));
+    compile_and_assert("false || true", |result| {
+        assert_eq!(result.unwrap(), Value::Bool(true));
+    });
 
-    let result5 = interpret("42 || false");
-    assert!(result5.is_err());
+    compile_and_assert("42 || false", |result| {
+        assert!(result.is_err());
+    });
 }
 
 #[test]
 fn str_literal_works() {
-    let result = interpret(r#" "test" "#);
-    assert_eq!(result.unwrap(), Value::String("test".to_owned()));
+    compile_and_assert(r#" "test" "#, |result| {
+        assert_eq!(result.unwrap(), Value::String("test".to_owned()));
+    });
 }
 
 #[test]
 fn string_concatenation() {
-    let result = interpret(r#" "foo" + "bar" "#);
-    assert_eq!(result.unwrap(), Value::String("foobar".to_owned()));
+    compile_and_assert(r#" "foo" + "bar" "#, |result| {
+        assert_eq!(result.unwrap(), Value::String("foobar".to_owned()));
+    });
 
-    let result = interpret(r#" 42 + "bar" "#);
-    assert_eq!(result.unwrap(), Value::String("42bar".to_owned()));
+    compile_and_assert(r#" 42 + "bar" "#, |result| {
+        assert_eq!(result.unwrap(), Value::String("42bar".to_owned()));
+    });
 
-    let result = interpret(r#" "foo" + 42 "#);
-    assert_eq!(result.unwrap(), Value::String("foo42".to_owned()));
+    compile_and_assert(r#" "foo" + 42 "#, |result| {
+        assert_eq!(result.unwrap(), Value::String("foo42".to_owned()));
+    });
 }
 
 #[test]
 fn tuple_works() {
-    let result = interpret(r#" (42, (false, "foo")) "#);
-    assert_eq!(
-        result.unwrap(),
-        Value::Tuple(
-            Box::new(Value::Integer(42)),
-            Box::new(Value::Tuple(
-                Box::new(Value::Bool(false)),
-                Box::new(Value::String("foo".to_owned()))
-            ))
-        )
-    );
+    compile_and_assert(r#" (42, (false, "foo")) "#, |result| {
+        assert_eq!(
+            result.unwrap(),
+            Value::Tuple(
+                Box::new(Value::Integer(42)),
+                Box::new(Value::Tuple(
+                    Box::new(Value::Bool(false)),
+                    Box::new(Value::String("foo".to_owned()))
+                ))
+            )
+        );
+    });
 }
 
 #[test]
 fn first_works() {
-    let result = interpret(r#" first((42, true)) "#);
-    assert_eq!(result.unwrap(), Value::Integer(42));
+    compile_and_assert(r#" first((42, true)) "#, |result| {
+        assert_eq!(result.unwrap(), Value::Integer(42));
+    });
 
-    let result2 = interpret(r#" first("foo") "#);
-    assert!(result2.is_err());
+    compile_and_assert(r#" first("foo") "#, |result| {
+        assert!(result.is_err());
+    });
 }
 
 #[test]
 fn second_works() {
-    let result = interpret(r#" second((42, true)) "#);
-    assert_eq!(result.unwrap(), Value::Bool(true));
+    compile_and_assert(r#" second((42, true)) "#, |result| {
+        assert_eq!(result.unwrap(), Value::Bool(true));
+    });
 
-    let result2 = interpret(r#" second("foo") "#);
-    assert!(result2.is_err());
+    compile_and_assert(r#" second("foo") "#, |result| {
+        assert!(result.is_err());
+    });
 }
 
 #[test]
 fn globals_work() {
-    let result = interpret(
+    compile_and_assert(
         r#"
         let foo = 42;
         let bar = true;
         (bar, foo)
     "#,
-    );
-    assert_eq!(
-        result.unwrap(),
-        Value::Tuple(Box::new(Value::Bool(true)), Box::new(Value::Integer(42)))
+        |result| {
+            assert_eq!(
+                result.unwrap(),
+                Value::Tuple(Box::new(Value::Bool(true)), Box::new(Value::Integer(42)))
+            );
+        },
     );
 }
 
 #[test]
 fn print_works() {
-    let result = interpret(r#" print((true, 42)) "#);
-    assert_eq!(
-        result.unwrap(),
-        Value::Tuple(Box::new(Value::Bool(true)), Box::new(Value::Integer(42)))
-    );
+    compile_and_assert(r#" print((true, 42)) "#, |result| {
+        assert_eq!(
+            result.unwrap(),
+            Value::Tuple(Box::new(Value::Bool(true)), Box::new(Value::Integer(42)))
+        );
+    });
 }
 
 #[test]
 fn if_works() {
-    let result = interpret(
+    compile_and_assert(
         r#"
         if (42 > 0) {
             let a = "foo";
@@ -243,10 +292,12 @@ fn if_works() {
             1
         }
     "#,
+        |result| {
+            assert_eq!(result.unwrap(), Value::String("foobar".to_owned()));
+        },
     );
-    assert_eq!(result.unwrap(), Value::String("foobar".to_owned()));
 
-    let result2 = interpret(
+    compile_and_assert(
         r#"
         if (42 < 0) {
             let a = "foo";
@@ -256,6 +307,72 @@ fn if_works() {
             b + b
         }
     "#,
+        |result| {
+            assert_eq!(result.unwrap(), Value::Integer(2));
+        },
     );
-    assert_eq!(result2.unwrap(), Value::Integer(2));
+}
+
+#[test]
+fn sum() {
+    compile_and_assert(
+        r#"
+            let sum = fn (n) => {
+              if (n == 1) {
+                n
+              } else {
+                n + sum(n - 1)
+              }
+            };
+
+            print (sum(5))
+            "#,
+        |result| {
+            assert_eq!(result.unwrap(), Value::Integer(15));
+        },
+    );
+}
+
+#[test]
+fn combination() {
+    compile_and_assert(
+        r#"
+            let combination = fn (n, k) => {
+                let a = k == 0;
+                let b = k == n;
+                if (a || b)
+                {
+                    1
+                }
+                else {
+                    combination(n - 1, k - 1) + combination(n - 1, k)
+                }
+            };
+
+            print(combination(10, 2))
+        "#,
+        |result| {
+            assert_eq!(result.unwrap(), Value::Integer(45));
+        },
+    );
+}
+
+#[test]
+fn fibonacci() {
+    compile_and_assert(
+        r#"
+            let fib = fn (n) => {
+              if (n < 2) {
+                n
+              } else {
+                fib(n - 1) + fib(n - 2)
+              }
+            };
+
+            print(fib(10))
+        "#,
+        |result| {
+            assert_eq!(result.unwrap(), Value::Integer(55));
+        },
+    );
 }

@@ -13,10 +13,10 @@ fn main() -> Result<()> {
     let file = fs::File::open(path)?;
     let contents: String = read_to_string(file).context("Could not read file.")?;
 
-    let vm = Vm::new();
-    let result = vm.interpret(path, &contents)?;
+    let mut vm = Vm::new();
+    let _result = vm.interpret(path, &contents)?;
 
-    println!("{}", result);
+    //println!("{}", result);
 
     Ok(())
 }

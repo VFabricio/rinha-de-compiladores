@@ -5,11 +5,13 @@ use rvm::vm::Vm;
 
 fn main() -> Result<()> {
     let args: Vec<String> = args().collect();
-    if args.len() < 2 {
-        bail!("Usage: rvm <filepath>.");
-    }
 
-    let path = &args[1];
+    let path = match args.len() {
+        1 => "/var/rinha/source.rinha",
+        2 => &args[1],
+        _ => bail!("Usage: rvm <filepath>."),
+    };
+
     let file = fs::File::open(path)?;
     let contents: String = read_to_string(file).context("Could not read file.")?;
 

@@ -116,8 +116,6 @@ impl<'a> Vm<'a> {
                 break;
             }
 
-            println!("environment: {environment:?}");
-
             let mut skip = 0;
             for instruction in bytecode {
                 instruction_pointer += 1;
@@ -359,11 +357,7 @@ impl<'a> Vm<'a> {
                         let mut environment = HashMap::new();
 
                         if let Value::Closure(parent_function, parent_environment) = parent {
-                            println!("parent_function: {parent_function:?}, parent_environment: {parent_environment:?}");
                             for captured in &function.captured {
-                                println!("searching for {captured:?}");
-                                println!("parent_function locals: {:?}", parent_function.locals);
-
                                 let index = parent_function
                                     .locals
                                     .iter()

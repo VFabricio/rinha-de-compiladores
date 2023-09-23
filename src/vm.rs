@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use crate::{
     bytecode::Instruction,
     call_frame::CallFrame,
-    compiler::Compiler,
+    compiler::{CallPosition, Compiler},
     function::Function,
     value::{FinalValue, Value},
 };
@@ -89,7 +89,7 @@ impl<'a> Vm<'a> {
 
     fn compile(&mut self, term: Term) -> Result<Vec<Instruction>> {
         let mut compiler = Compiler::new(None);
-        compiler.compile(term, self)
+        compiler.compile(term, self, CallPosition::Unknown)
     }
 
     fn run(&'a mut self, bytecode: &'a [Instruction]) -> Result<FinalValue> {
@@ -411,6 +411,37 @@ impl<'a> Vm<'a> {
                             bail!("Attempted to call value that is not a function!");
                         }
                     }
+                    Instruction::TailCall(arity) => {
+                        let closure_index = self.stack.len() - 1 - arity as usize;
+                        let closure = &self.stack[closure_index];
+                        let closure = closure.clone();
+
+                        if let Value::Closure(function, _) = closure {
+                            if function.arity != arity {
+                                bail!("Attempted to call function with wrong number of arguments.");
+                            }
+                            let current_frame = self
+                                .call_frames
+                                .last_mut()
+                                .expect("There is at least one active call frame at all times.");
+
+                            current_frame.instruction_pointer = instruction_pointer;
+
+                            let new_frame = CallFrame {
+                                bytecode: &function.bytecode,
+                                instruction_pointer: 0,
+                                closure,
+                            };
+                            self.call_frames.pop();
+
+                            self.call_frames.push(new_frame);
+
+                            self.frame_index = self.stack.len() - arity as usize;
+                            break;
+                        } else {
+                            bail!("Attempted to call value that is not a function!");
+                        }
+                    }
                     Instruction::Return(arity) => {
                         let result = self.stack.pop().expect("Function must have a return value");
 
@@ -422,7 +453,8 @@ impl<'a> Vm<'a> {
                         self.call_frames.pop();
 
                         if self.call_frames.len() > 1 {
-                            self.frame_index = self.stack.len() - 1 - arity as usize;
+                            self.frame_index =
+                                (self.stack.len() - 1).saturating_sub(arity as usize);
                         }
                         break;
                     }

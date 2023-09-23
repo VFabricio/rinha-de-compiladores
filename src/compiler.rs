@@ -15,6 +15,12 @@ pub struct Compiler<'a> {
     locals: Vec<Local>,
 }
 
+#[derive(Clone, Copy, Debug)]
+pub enum CallPosition {
+    NonTail,
+    Unknown,
+}
+
 impl<'a> Compiler<'a> {
     pub fn new(parent: Option<&'a Compiler<'a>>) -> Self {
         Self {
@@ -23,7 +29,12 @@ impl<'a> Compiler<'a> {
             locals: Vec::new(),
         }
     }
-    pub fn compile(&mut self, term: Term, vm: &mut Vm) -> Result<Vec<Instruction>> {
+    pub fn compile(
+        &mut self,
+        term: Term,
+        vm: &mut Vm,
+        call_position: CallPosition,
+    ) -> Result<Vec<Instruction>> {
         match term {
             Term::Int(i) => {
                 let value = Value::Integer(i.value);
@@ -46,8 +57,8 @@ impl<'a> Compiler<'a> {
                 self.bytecode.push(Instruction::Constant(index));
             }
             Term::Binary(b) => {
-                self.compile(*b.lhs, vm)?;
-                self.compile(*b.rhs, vm)?;
+                self.compile(*b.lhs, vm, CallPosition::NonTail)?;
+                self.compile(*b.rhs, vm, CallPosition::NonTail)?;
 
                 let instruction = match b.op {
                     BinaryOp::Add => Instruction::Add,
@@ -67,23 +78,23 @@ impl<'a> Compiler<'a> {
                 self.bytecode.push(instruction);
             }
             Term::Tuple(t) => {
-                self.compile(*t.first, vm)?;
-                self.compile(*t.second, vm)?;
+                self.compile(*t.first, vm, CallPosition::NonTail)?;
+                self.compile(*t.second, vm, CallPosition::NonTail)?;
 
                 self.bytecode.push(Instruction::Tuple);
             }
             Term::First(t) => {
-                self.compile(*t.value, vm)?;
+                self.compile(*t.value, vm, call_position)?;
 
                 self.bytecode.push(Instruction::First);
             }
             Term::Second(t) => {
-                self.compile(*t.value, vm)?;
+                self.compile(*t.value, vm, call_position)?;
 
                 self.bytecode.push(Instruction::Second);
             }
             Term::Let(t) => {
-                self.compile(*t.value, vm)?;
+                self.compile(*t.value, vm, CallPosition::NonTail)?;
 
                 let index = vm.create_identifier(t.name.text.clone())?;
 
@@ -93,7 +104,7 @@ impl<'a> Compiler<'a> {
                     self.bytecode.push(Instruction::GlobalSet(index));
                 }
 
-                self.compile(*t.next, vm)?;
+                self.compile(*t.next, vm, call_position)?;
             }
             Term::Var(t) => {
                 let identifier_index = vm.create_identifier(t.text.clone())?;
@@ -107,11 +118,11 @@ impl<'a> Compiler<'a> {
                 }
             }
             Term::Print(t) => {
-                self.compile(*t.value, vm)?;
+                self.compile(*t.value, vm, CallPosition::NonTail)?;
                 self.bytecode.push(Instruction::Print);
             }
             Term::If(t) => {
-                self.compile(*t.condition, vm)?;
+                self.compile(*t.condition, vm, CallPosition::NonTail)?;
                 self.bytecode.push(Instruction::If(0));
 
                 let if_address = self.bytecode.len() - 1;
@@ -121,7 +132,7 @@ impl<'a> Compiler<'a> {
                     if_address as u32
                 };
 
-                self.compile(*t.then, vm)?;
+                self.compile(*t.then, vm, call_position)?;
                 self.bytecode.push(Instruction::Jump(0));
 
                 let jump_address = self.bytecode.len() - 1;
@@ -133,7 +144,7 @@ impl<'a> Compiler<'a> {
 
                 self.bytecode[if_address as usize] = Instruction::If(jump_address - if_address);
 
-                self.compile(*t.otherwise, vm)?;
+                self.compile(*t.otherwise, vm, call_position)?;
                 let after_address = self.bytecode.len() - 1;
                 let after_address = if after_address > i32::MAX as usize {
                     bail!("Instruction too long.");
@@ -160,7 +171,7 @@ impl<'a> Compiler<'a> {
                     });
                 }
 
-                let mut bytecode = compiler.compile(*f.value, vm)?;
+                let mut bytecode = compiler.compile(*f.value, vm, CallPosition::Unknown)?;
                 bytecode.push(Instruction::Return(compiler.locals.len() as u16));
 
                 let function = Function {
@@ -175,15 +186,20 @@ impl<'a> Compiler<'a> {
                     .push(Instruction::Closure(vm.functions.len() as u16 - 1));
             }
             Term::Call(c) => {
-                self.compile(*c.callee, vm)?;
+                self.compile(*c.callee, vm, CallPosition::NonTail)?;
 
                 let arity = c.arguments.len() as u16;
 
                 for argument in c.arguments {
-                    self.compile(argument, vm)?;
+                    self.compile(argument, vm, CallPosition::NonTail)?;
                 }
 
-                self.bytecode.push(Instruction::Call(arity))
+                let instruction = match call_position {
+                    CallPosition::NonTail => Instruction::Call(arity),
+                    CallPosition::Unknown => Instruction::TailCall(arity),
+                };
+
+                self.bytecode.push(instruction);
             }
             Term::Error(e) => bail!(anyhow!(e.message)),
         };

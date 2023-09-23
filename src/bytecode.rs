@@ -28,4 +28,5 @@ pub enum Instruction {
     Closure(u16),
     Call(u16),
     Return(u16),
+    TailCall(u16),
 }

@@ -1,5 +1,6 @@
 use std::{
     cmp::{Eq, PartialEq},
+    convert::From,
     fmt,
 };
 
@@ -39,3 +40,24 @@ impl<'a> PartialEq for Value<'a> {
 }
 
 impl<'a> Eq for Value<'a> {}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum FinalValue {
+    Bool(bool),
+    Integer(i32),
+    String(String),
+    Tuple(Box<FinalValue>, Box<FinalValue>),
+    Closure,
+}
+
+impl<'a> From<&'a Value<'a>> for FinalValue {
+    fn from(value: &'a Value<'a>) -> Self {
+        match value {
+            Value::Bool(b) => Self::Bool(*b),
+            Value::Integer(i) => Self::Integer(*i),
+            Value::String(s) => Self::String(s.clone()),
+            Value::Tuple(v1, v2) => Self::Tuple(Box::new((&**v1).into()), Box::new((&**v2).into())),
+            Value::Closure(_) => Self::Closure,
+        }
+    }
+}

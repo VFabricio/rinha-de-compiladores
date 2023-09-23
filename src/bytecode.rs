@@ -27,4 +27,5 @@ pub enum Instruction {
     Jump(u32),
     Closure(u16),
     Call(u16),
+    Return(u16),
 }

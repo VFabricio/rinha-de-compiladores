@@ -143,19 +143,19 @@ impl<'a> Compiler<'a> {
                 self.bytecode[jump_address as usize] =
                     Instruction::Jump(after_address - jump_address);
             }
-            Term::Function(mut f) => {
+            Term::Function(f) => {
                 let mut compiler = Compiler::new(Some(self));
 
                 let arity = f.parameters.len() as u16;
 
-                f.parameters.reverse();
                 for parameter in f.parameters {
                     compiler.locals.push(Local {
                         name: parameter.text,
                     });
                 }
 
-                let bytecode = compiler.compile(*f.value, vm)?;
+                let mut bytecode = compiler.compile(*f.value, vm)?;
+                bytecode.push(Instruction::Return(compiler.locals.len() as u16));
 
                 let function = Function { arity, bytecode };
                 vm.functions.push(function);
@@ -176,6 +176,7 @@ impl<'a> Compiler<'a> {
             }
             Term::Error(e) => bail!(anyhow!(e.message)),
         };
+
         Ok(self.bytecode.clone())
     }
 }

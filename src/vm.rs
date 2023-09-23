@@ -3,13 +3,15 @@ use rinha::{ast::Term, parser::parse_or_report};
 use std::collections::HashMap;
 
 use crate::{
-    bytecode::Instruction, call_frame::CallFrame, compiler::Compiler, function::Function,
-    value::Value,
+    bytecode::Instruction,
+    call_frame::CallFrame,
+    compiler::Compiler,
+    function::Function,
+    value::{FinalValue, Value},
 };
 
 pub struct Vm<'a> {
-    bytecode: Vec<Instruction>,
-    call_frames: Vec<CallFrame>,
+    call_frames: Vec<CallFrame<'a>>,
     constants: Vec<Value<'a>>,
     pub functions: Vec<Function>,
     globals: HashMap<String, Value<'a>>,
@@ -38,7 +40,6 @@ macro_rules! pop_operands {
 impl<'a> Vm<'a> {
     pub fn new() -> Self {
         Self {
-            bytecode: Vec::new(),
             call_frames: Vec::new(),
             constants: Vec::new(),
             functions: Vec::new(),
@@ -49,9 +50,12 @@ impl<'a> Vm<'a> {
         }
     }
 
-    pub fn interpret(&'a mut self, filename: &str, contents: &str) -> Result<Value<'a>> {
+    pub fn interpret(&'a mut self, filename: &str, contents: &str) -> Result<FinalValue> {
         let file = parse_or_report(filename, contents)?;
-        let bytecode = self.compile(file.expression)?;
+
+        let mut bytecode = self.compile(file.expression)?;
+        bytecode.push(Instruction::Return(0));
+        let bytecode = Box::leak(Box::new(bytecode));
 
         let result = self.run(bytecode)?;
         Ok(result)
@@ -88,19 +92,29 @@ impl<'a> Vm<'a> {
         compiler.compile(term, self)
     }
 
-    fn run(&'a mut self, bytecode: Vec<Instruction>) -> Result<Value<'a>> {
-        self.bytecode = bytecode.clone();
-
+    fn run(&'a mut self, bytecode: &'a [Instruction]) -> Result<FinalValue> {
         let initial_frame = CallFrame {
-            bytecode,
+            bytecode: &bytecode,
             instruction_pointer: 0,
         };
 
         self.call_frames.push(initial_frame);
 
         loop {
+            let bytecode;
+            let mut instruction_pointer;
+
+            if let Some(call_frame) = self.call_frames.last() {
+                instruction_pointer = call_frame.instruction_pointer;
+                bytecode = &call_frame.bytecode[instruction_pointer..];
+            } else {
+                break;
+            }
+
             let mut skip = 0;
-            for instruction in &self.bytecode {
+            for instruction in bytecode {
+                instruction_pointer += 1;
+
                 if skip > 0 {
                     skip -= 1;
                     continue;
@@ -331,52 +345,59 @@ impl<'a> Vm<'a> {
                         let function = &self.functions[index as usize];
                         let closure = Value::Closure(function);
                         self.stack.push(closure);
-                    } /*
+                    }
                     Instruction::Call(arity) => {
-                    let mut child_self.stack = Vec::new();
+                        let closure_index = self.stack.len() - 1 - arity as usize;
+                        let closure = &self.stack[closure_index];
 
-                    for _ in 0..arity {
-                    let value = self.stack.pop().ok_or(anyhow!("Missing arguments."))?;
-                    child_self.stack.push(value);
+                        if let Value::Closure(function) = *closure {
+                            if function.arity != arity {
+                                bail!("Attempted to call function with wrong number of arguments.");
+                            }
+                            let current_frame = self
+                                .call_frames
+                                .last_mut()
+                                .expect("There is at least one active call frame at all times.");
+
+                            current_frame.instruction_pointer = instruction_pointer;
+
+                            let new_frame = CallFrame {
+                                bytecode: &function.bytecode,
+                                instruction_pointer: 0,
+                            };
+                            self.call_frames.push(new_frame);
+
+                            self.frame_index = self.stack.len() - arity as usize;
+                            break;
+                        } else {
+                            bail!("Attempted to call value that is not a function!");
+                        }
                     }
+                    Instruction::Return(arity) => {
+                        let result = self.stack.pop().expect("Function must have a return value");
 
-                    let closure = self.stack.pop().ok_or(anyhow!("Missing function."))?;
+                        for _ in 0..arity + 1 {
+                            self.stack.pop();
+                        }
 
-                    if let Value::Closure(f) = closure {
-                    if f.arity != arity {
-                    bail!("Function called with wrong number of arguments.");
+                        self.stack.push(result);
+                        self.call_frames.pop();
+
+                        if self.call_frames.len() > 1 {
+                            self.frame_index = self.stack.len() - 1 - arity as usize;
+                        }
+                        break;
                     }
-
-                    let global_references = if is_function {
-                    global_references
-                    } else {
-                    &globals
-                    };
-
-                    let value =
-                    self.run(&f.bytecode, child_self.stack, global_references, true)?;
-                    self.stack.push(value);
-                    } else {
-                    bail!("Attempted to call a value that is not a function.");
-                    }
-                    }
-                     */
-                    _ => unimplemented!(),
                 }
-            }
-
-            self.call_frames.pop();
-            if self.call_frames.is_empty() {
-                break;
             }
         }
 
-        Ok(self
-            .stack
-            .last()
-            .expect(
-                "At the end of the execution, there must be at least one value in the self.stack.",
-            )
-            .clone())
+        let value = self.stack.last().expect(
+            "At the end of the execution, there must be at least one value in the self.stack.",
+        );
+
+        let value: FinalValue = value.into();
+
+        Ok(value)
     }
 }

@@ -382,3 +382,43 @@ fn fibonacci() {
         },
     );
 }
+
+#[test]
+fn closure_capturing() {
+    compile_and_assert(
+        r#"
+            let make_adder = fn (x) => {
+                fn (y) => {
+                    x + y
+                }
+            };
+            let add_1 = make_adder(1);
+            print(add_1(41))
+        "#,
+        |result| {
+            assert_eq!(result.unwrap(), FinalValue::Integer(42));
+        },
+    );
+}
+
+#[test]
+fn closure_capturing_nested() {
+    compile_and_assert(
+        r#"
+            let outer = fn () => {
+                let x = "value";
+                let middle = fn () => {
+                    let inner = fn () => {
+                        x
+                    };
+                    inner
+                };
+                middle
+            };
+            let mid = outer();
+            let in = mid();
+            print(in())
+        "#,
+        |result| assert_eq!(result.unwrap(), FinalValue::String("value".to_owned())),
+    )
+}

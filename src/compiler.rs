@@ -1,5 +1,6 @@
 use anyhow::{anyhow, bail, Result};
 use rinha::ast::{BinaryOp, Term};
+use std::collections::HashSet;
 
 use crate::{
     bytecode::Instruction,
@@ -97,7 +98,7 @@ impl<'a> Compiler<'a> {
             Term::Var(t) => {
                 let identifier_index = vm.create_identifier(t.text.clone())?;
 
-                let local_index = self.locals.iter().position(|l| l.name == t.text);
+                let local_index = self.resolve_local(&t.text);
                 if let Some(index) = local_index {
                     self.bytecode
                         .push(Instruction::LocalGet(index as u16, identifier_index));
@@ -144,6 +145,11 @@ impl<'a> Compiler<'a> {
                     Instruction::Jump(after_address - jump_address);
             }
             Term::Function(f) => {
+                let captured = compute_captured_parameters(
+                    &f.value,
+                    f.parameters.iter().map(|p| p.text.clone()).collect(),
+                );
+
                 let mut compiler = Compiler::new(Some(self));
 
                 let arity = f.parameters.len() as u16;
@@ -157,7 +163,12 @@ impl<'a> Compiler<'a> {
                 let mut bytecode = compiler.compile(*f.value, vm)?;
                 bytecode.push(Instruction::Return(compiler.locals.len() as u16));
 
-                let function = Function { arity, bytecode };
+                let function = Function {
+                    arity,
+                    bytecode,
+                    captured,
+                    locals: compiler.locals.clone(),
+                };
                 vm.functions.push(function);
 
                 self.bytecode
@@ -178,5 +189,98 @@ impl<'a> Compiler<'a> {
         };
 
         Ok(self.bytecode.clone())
+    }
+
+    fn resolve_local(&self, name: &str) -> Option<usize> {
+        self.locals.iter().position(|l| l.name == name)
+    }
+}
+
+fn compute_captured_parameters(term: &Term, mut environment: HashSet<String>) -> HashSet<String> {
+    match term {
+        Term::Bool(_) | Term::Int(_) | Term::Str(_) | Term::Error(_) => HashSet::new(),
+        Term::First(f) => compute_captured_parameters(&f.value, environment),
+        Term::Second(f) => compute_captured_parameters(&f.value, environment),
+        Term::Tuple(t) => {
+            let mut result = HashSet::new();
+
+            let captured_in_first = compute_captured_parameters(&t.first, environment.clone());
+            result.extend(captured_in_first);
+
+            let captured_in_second = compute_captured_parameters(&t.second, environment);
+            result.extend(captured_in_second);
+
+            result
+        }
+        Term::Binary(b) => {
+            let mut result = HashSet::new();
+
+            let captured_in_lhs = compute_captured_parameters(&b.lhs, environment.clone());
+            result.extend(captured_in_lhs);
+
+            let captured_in_rhs = compute_captured_parameters(&b.rhs, environment);
+            result.extend(captured_in_rhs);
+
+            result
+        }
+        Term::If(i) => {
+            let mut result = HashSet::new();
+
+            let captured_in_condition =
+                compute_captured_parameters(&i.condition, environment.clone());
+            result.extend(captured_in_condition);
+
+            let captured_in_then = compute_captured_parameters(&i.then, environment.clone());
+            result.extend(captured_in_then);
+
+            let captured_in_otherwise =
+                compute_captured_parameters(&i.otherwise, environment.clone());
+            result.extend(captured_in_otherwise);
+
+            result
+        }
+        Term::Print(p) => compute_captured_parameters(&p.value, environment),
+        Term::Let(l) => {
+            let mut result = HashSet::new();
+
+            let captured_in_value = compute_captured_parameters(&l.value, environment.clone());
+            result.extend(captured_in_value);
+
+            environment.insert(l.name.text.clone());
+
+            let captured_in_next = compute_captured_parameters(&l.next, environment);
+            result.extend(captured_in_next);
+
+            result
+        }
+        Term::Call(c) => {
+            let mut result = HashSet::new();
+
+            let captured_in_callee = compute_captured_parameters(&c.callee, environment.clone());
+            result.extend(captured_in_callee);
+
+            for argument in c.arguments.clone() {
+                let captured_in_argument =
+                    compute_captured_parameters(&argument, environment.clone());
+                result.extend(captured_in_argument);
+            }
+
+            result
+        }
+        Term::Function(f) => {
+            for parameter in f.parameters.clone() {
+                environment.insert(parameter.text);
+            }
+            compute_captured_parameters(&f.value, environment)
+        }
+        Term::Var(v) => {
+            let mut result = HashSet::new();
+
+            if !environment.contains(&v.text) {
+                result.insert(v.text.clone());
+            }
+
+            result
+        }
     }
 }

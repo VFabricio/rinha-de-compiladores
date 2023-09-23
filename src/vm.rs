@@ -96,6 +96,7 @@ impl<'a> Vm<'a> {
         let initial_frame = CallFrame {
             bytecode: &bytecode,
             instruction_pointer: 0,
+            closure: Value::Bool(false),
         };
 
         self.call_frames.push(initial_frame);
@@ -103,13 +104,19 @@ impl<'a> Vm<'a> {
         loop {
             let bytecode;
             let mut instruction_pointer;
+            let mut environment = &HashMap::new();
 
             if let Some(call_frame) = self.call_frames.last() {
                 instruction_pointer = call_frame.instruction_pointer;
                 bytecode = &call_frame.bytecode[instruction_pointer..];
+                if let Value::Closure(_, new_environment) = &call_frame.closure {
+                    environment = new_environment;
+                }
             } else {
                 break;
             }
+
+            println!("environment: {environment:?}");
 
             let mut skip = 0;
             for instruction in bytecode {
@@ -307,9 +314,9 @@ impl<'a> Vm<'a> {
                     Instruction::GlobalGet(index) => {
                         let identifier = self.identifiers[index as usize].clone();
 
-                        let value = self
-                            .globals
+                        let value = environment
                             .get(&identifier)
+                            .or(self.globals.get(&identifier))
                             .ok_or(anyhow!("Unknown variable {identifier}."))?
                             .clone();
 
@@ -343,14 +350,50 @@ impl<'a> Vm<'a> {
                     }
                     Instruction::Closure(index) => {
                         let function = &self.functions[index as usize];
-                        let closure = Value::Closure(function);
+                        let parent = &self
+                            .call_frames
+                            .last()
+                            .expect("There is always at least one call frame active.")
+                            .closure;
+
+                        let mut environment = HashMap::new();
+
+                        if let Value::Closure(parent_function, parent_environment) = parent {
+                            println!("parent_function: {parent_function:?}, parent_environment: {parent_environment:?}");
+                            for captured in &function.captured {
+                                println!("searching for {captured:?}");
+                                println!("parent_function locals: {:?}", parent_function.locals);
+
+                                let index = parent_function
+                                    .locals
+                                    .iter()
+                                    .position(|l| l.name == *captured);
+
+                                if let Some(index) = index {
+                                    let absolute_index = self.frame_index + index as usize;
+                                    environment.insert(
+                                        captured.clone(),
+                                        self.stack[absolute_index].clone(),
+                                    );
+                                } else {
+                                    let captured_in_parent = parent_environment.get(captured);
+                                    if let Some(captured_in_parent) = captured_in_parent {
+                                        environment
+                                            .insert(captured.clone(), captured_in_parent.clone());
+                                    }
+                                }
+                            }
+                        }
+
+                        let closure = Value::Closure(function, environment);
                         self.stack.push(closure);
                     }
                     Instruction::Call(arity) => {
                         let closure_index = self.stack.len() - 1 - arity as usize;
                         let closure = &self.stack[closure_index];
+                        let closure = closure.clone();
 
-                        if let Value::Closure(function) = *closure {
+                        if let Value::Closure(function, _) = closure {
                             if function.arity != arity {
                                 bail!("Attempted to call function with wrong number of arguments.");
                             }
@@ -364,6 +407,7 @@ impl<'a> Vm<'a> {
                             let new_frame = CallFrame {
                                 bytecode: &function.bytecode,
                                 instruction_pointer: 0,
+                                closure,
                             };
                             self.call_frames.push(new_frame);
 

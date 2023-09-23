@@ -1,6 +1,6 @@
 use crate::bytecode::Instruction;
 
-use std::fmt;
+use std::{collections::HashSet, fmt};
 
 #[derive(Clone, Debug)]
 pub struct Local {
@@ -10,6 +10,8 @@ pub struct Local {
 pub struct Function {
     pub arity: u16,
     pub bytecode: Vec<Instruction>,
+    pub captured: HashSet<String>,
+    pub locals: Vec<Local>,
 }
 
 impl fmt::Debug for Function {

@@ -436,6 +436,17 @@ impl<'a> Vm<'a> {
 
                             self.call_frames.push(new_frame);
 
+                            let kept: Vec<Value<'_>> = self
+                                .stack
+                                .drain(self.stack.len() - arity as usize - 1..)
+                                .collect();
+
+                            self.stack.truncate(
+                                self.stack.len() - 1 - arity as usize - function.locals.len(),
+                            );
+
+                            self.stack.extend(kept);
+
                             self.frame_index = self.stack.len() - arity as usize;
                             break;
                         } else {

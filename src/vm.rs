@@ -13,10 +13,12 @@ use crate::{
 pub struct Vm<'a> {
     call_frames: Vec<CallFrame<'a>>,
     constants: Vec<Value<'a>>,
+    current_execution: Option<(u16, i32)>,
     pub functions: Vec<Function>,
     globals: HashMap<String, Value<'a>>,
     identifiers: Vec<String>,
     frame_index: usize,
+    memoization: HashMap<(u16, i32), Value<'a>>,
     stack: Vec<Value<'a>>,
 }
 
@@ -42,10 +44,12 @@ impl<'a> Vm<'a> {
         Self {
             call_frames: Vec::new(),
             constants: Vec::new(),
+            current_execution: None,
             functions: Vec::new(),
             globals: HashMap::new(),
             identifiers: Vec::new(),
             frame_index: 0,
+            memoization: HashMap::new(),
             stack: Vec::new(),
         }
     }
@@ -391,6 +395,23 @@ impl<'a> Vm<'a> {
                             if function.arity != arity {
                                 bail!("Attempted to call function with wrong number of arguments.");
                             }
+
+                            let last_argument = &self.stack[self.stack.len() - 1];
+
+                            if arity == 1 {
+                                if let Value::Integer(i) = last_argument {
+                                    if let Some(memoized) =
+                                        self.memoization.get(&(function.index, *i))
+                                    {
+                                        self.stack.truncate(self.stack.len() - 2);
+                                        self.stack.push(memoized.clone());
+                                        continue;
+                                    }
+
+                                    self.current_execution = Some((function.index, *i));
+                                }
+                            }
+
                             let current_frame = self
                                 .call_frames
                                 .last_mut()
@@ -420,6 +441,23 @@ impl<'a> Vm<'a> {
                             if function.arity != arity {
                                 bail!("Attempted to call function with wrong number of arguments.");
                             }
+
+                            let last_argument = &self.stack[self.stack.len() - 2];
+
+                            if arity == 1 {
+                                if let Value::Integer(i) = last_argument {
+                                    if let Some(memoized) =
+                                        self.memoization.get(&(function.index, *i))
+                                    {
+                                        self.stack.truncate(self.stack.len() - 2);
+                                        self.stack.push(memoized.clone());
+                                        continue;
+                                    }
+
+                                    self.current_execution = Some((function.index, *i));
+                                }
+                            }
+
                             let current_frame = self
                                 .call_frames
                                 .last_mut()
@@ -455,6 +493,12 @@ impl<'a> Vm<'a> {
                     }
                     Instruction::Return(arity) => {
                         let result = self.stack.pop().expect("Function must have a return value");
+
+                        if let Some(execution) = self.current_execution {
+                            self.memoization.insert(execution, result.clone());
+                        };
+
+                        self.current_execution = None;
 
                         for _ in 0..arity + 1 {
                             self.stack.pop();

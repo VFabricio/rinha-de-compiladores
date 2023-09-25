@@ -174,16 +174,18 @@ impl<'a> Compiler<'a> {
                 let mut bytecode = compiler.compile(*f.value, vm, CallPosition::Unknown)?;
                 bytecode.push(Instruction::Return(compiler.locals.len() as u16));
 
+                let index = vm.functions.len() as u16;
+
                 let function = Function {
                     arity,
                     bytecode,
                     captured,
                     locals: compiler.locals.clone(),
+                    index,
                 };
                 vm.functions.push(function);
 
-                self.bytecode
-                    .push(Instruction::Closure(vm.functions.len() as u16 - 1));
+                self.bytecode.push(Instruction::Closure(index));
             }
             Term::Call(c) => {
                 self.compile(*c.callee, vm, CallPosition::NonTail)?;

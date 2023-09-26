@@ -19,6 +19,7 @@ pub struct Vm<'a> {
     identifiers: Vec<String>,
     frame_index: usize,
     memoization: HashMap<(u16, i32), Value<'a>>,
+    pure: bool,
     stack: Vec<Value<'a>>,
 }
 
@@ -50,6 +51,7 @@ impl<'a> Vm<'a> {
             identifiers: Vec::new(),
             frame_index: 0,
             memoization: HashMap::new(),
+            pure: true,
             stack: Vec::new(),
         }
     }
@@ -119,6 +121,8 @@ impl<'a> Vm<'a> {
             } else {
                 break;
             }
+
+            self.pure = true;
 
             let mut skip = 0;
             for instruction in bytecode {
@@ -300,6 +304,7 @@ impl<'a> Vm<'a> {
                         }
                     }
                     Instruction::Print => {
+                        self.pure = false;
                         let value = self.stack.last().ok_or(anyhow!(
                             "Error printing. No value found in the self.stack to be set."
                         ))?;
@@ -495,7 +500,9 @@ impl<'a> Vm<'a> {
                         let result = self.stack.pop().expect("Function must have a return value");
 
                         if let Some(execution) = self.current_execution {
-                            self.memoization.insert(execution, result.clone());
+                            if self.pure {
+                                self.memoization.insert(execution, result.clone());
+                            }
                         };
 
                         self.current_execution = None;

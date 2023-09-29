@@ -3,6 +3,7 @@ use std::{
     collections::HashMap,
     convert::From,
     fmt,
+    rc::Rc,
 };
 
 use crate::function::Function;
@@ -12,8 +13,8 @@ pub enum Value<'a> {
     Bool(bool),
     Integer(i32),
     String(String),
-    Tuple(Box<Value<'a>>, Box<Value<'a>>),
-    Closure(&'a Function, HashMap<&'a str, Value<'a>>),
+    Tuple(Box<Rc<Value<'a>>>, Box<Rc<Value<'a>>>),
+    Closure(&'a Function, HashMap<&'a str, Rc<Value<'a>>>),
 }
 
 impl<'a> fmt::Debug for Value<'a> {
@@ -69,7 +70,9 @@ impl<'a> From<&'a Value<'a>> for FinalValue {
             Value::Bool(b) => Self::Bool(*b),
             Value::Integer(i) => Self::Integer(*i),
             Value::String(s) => Self::String(s.clone()),
-            Value::Tuple(v1, v2) => Self::Tuple(Box::new((&**v1).into()), Box::new((&**v2).into())),
+            Value::Tuple(v1, v2) => {
+                Self::Tuple(Box::new((&***v1).into()), Box::new((&***v2).into()))
+            }
             Value::Closure(_, _) => Self::Closure,
         }
     }

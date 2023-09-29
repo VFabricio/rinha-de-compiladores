@@ -1,6 +1,6 @@
 use anyhow::{anyhow, bail, Result};
 use rinha::{ast::Term, parser::parse_or_report};
-use std::collections::HashMap;
+use std::{collections::HashMap, rc::Rc};
 
 use crate::{
     bytecode::Instruction,
@@ -15,11 +15,11 @@ pub struct Vm<'a> {
     constants: Vec<Value<'a>>,
     current_execution: Option<(u16, i32)>,
     pub functions: Vec<Function>,
-    globals: HashMap<&'a str, Value<'a>>,
+    globals: HashMap<&'a str, Rc<Value<'a>>>,
     identifiers: Vec<String>,
-    memoization: HashMap<(u16, i32), Value<'a>>,
+    memoization: HashMap<(u16, i32), Rc<Value<'a>>>,
     pure: bool,
-    stack: Vec<Value<'a>>,
+    stack: Vec<Rc<Value<'a>>>,
 }
 
 macro_rules! pop_operands {
@@ -34,7 +34,7 @@ macro_rules! pop_operands {
             .pop()
             .ok_or(anyhow!("Expected operand, but stack was empty."))?;
 
-        let result: Result<(Value<'_>, Value<'_>)> = Ok((lhs, rhs));
+        let result: Result<(Rc<Value<'_>>, Rc<Value<'_>>)> = Ok((lhs, rhs));
         result
     }};
 }
@@ -99,7 +99,7 @@ impl<'a> Vm<'a> {
     fn run(&'a mut self, bytecode: &'a [Instruction]) -> Result<FinalValue> {
         let initial_frame = CallFrame {
             bytecode: &bytecode,
-            closure: Value::Bool(false),
+            closure: Rc::new(Value::Bool(false)),
             instruction_pointer: 0,
             frame_index: 0,
         };
@@ -116,7 +116,7 @@ impl<'a> Vm<'a> {
                 frame_index = call_frame.frame_index;
                 instruction_pointer = call_frame.instruction_pointer;
                 bytecode = &call_frame.bytecode[instruction_pointer..];
-                if let Value::Closure(_, new_environment) = &call_frame.closure {
+                if let Value::Closure(_, new_environment) = &*call_frame.closure {
                     environment = new_environment;
                 }
             } else {
@@ -137,31 +137,34 @@ impl<'a> Vm<'a> {
                 match *instruction {
                     Instruction::Constant(index) => {
                         let value = self.constants[index as usize].clone();
-                        self.stack.push(value);
+                        self.stack.push(Rc::new(value));
                     }
                     Instruction::True => {
                         let value = Value::Bool(true);
-                        self.stack.push(value);
+                        self.stack.push(Rc::new(value));
                     }
                     Instruction::False => {
                         let value = Value::Bool(false);
-                        self.stack.push(value);
+                        self.stack.push(Rc::new(value));
                     }
                     Instruction::Add => {
                         let (lhs, rhs) = pop_operands!(self)?;
 
-                        match (lhs, rhs) {
+                        match (lhs.as_ref(), rhs.as_ref()) {
                             (Value::Integer(lhs), Value::Integer(rhs)) => {
-                                self.stack.push(Value::Integer(lhs + rhs));
+                                self.stack.push(Rc::new(Value::Integer(lhs + rhs)));
                             }
                             (Value::String(lhs), Value::Integer(rhs)) => {
-                                self.stack.push(Value::String(format!("{lhs}{rhs}")));
+                                self.stack
+                                    .push(Rc::new(Value::String(format!("{lhs}{rhs}"))));
                             }
                             (Value::Integer(lhs), Value::String(rhs)) => {
-                                self.stack.push(Value::String(format!("{lhs}{rhs}")));
+                                self.stack
+                                    .push(Rc::new(Value::String(format!("{lhs}{rhs}"))));
                             }
                             (Value::String(lhs), Value::String(rhs)) => {
-                                self.stack.push(Value::String(format!("{lhs}{rhs}")));
+                                self.stack
+                                    .push(Rc::new(Value::String(format!("{lhs}{rhs}"))));
                             }
                             _ => {
                                 bail!("Wrong types for add.");
@@ -171,8 +174,10 @@ impl<'a> Vm<'a> {
                     Instruction::Sub => {
                         let (lhs, rhs) = pop_operands!(self)?;
 
-                        if let (Value::Integer(lhs), Value::Integer(rhs)) = (lhs, rhs) {
-                            self.stack.push(Value::Integer(lhs - rhs));
+                        if let (Value::Integer(lhs), Value::Integer(rhs)) =
+                            (lhs.as_ref(), rhs.as_ref())
+                        {
+                            self.stack.push(Rc::new(Value::Integer(lhs - rhs)));
                         } else {
                             bail!("Operands must be both integers.");
                         }
@@ -180,8 +185,10 @@ impl<'a> Vm<'a> {
                     Instruction::Mul => {
                         let (lhs, rhs) = pop_operands!(self)?;
 
-                        if let (Value::Integer(lhs), Value::Integer(rhs)) = (lhs, rhs) {
-                            self.stack.push(Value::Integer(lhs * rhs));
+                        if let (Value::Integer(lhs), Value::Integer(rhs)) =
+                            (lhs.as_ref(), rhs.as_ref())
+                        {
+                            self.stack.push(Rc::new(Value::Integer(lhs * rhs)));
                         } else {
                             bail!("Operands must be both integers.");
                         }
@@ -189,12 +196,14 @@ impl<'a> Vm<'a> {
                     Instruction::Div => {
                         let (lhs, rhs) = pop_operands!(self)?;
 
-                        if let (Value::Integer(lhs), Value::Integer(rhs)) = (lhs, rhs) {
+                        if let (Value::Integer(lhs), Value::Integer(rhs)) =
+                            (lhs.as_ref(), rhs.as_ref())
+                        {
                             let result = lhs
-                                .checked_div(rhs)
+                                .checked_div(*rhs)
                                 .ok_or(anyhow!("Attempted to divide by zero"))?;
 
-                            self.stack.push(Value::Integer(result));
+                            self.stack.push(Rc::new(Value::Integer(result)));
                         } else {
                             bail!("Operands must be both integers.");
                         }
@@ -202,29 +211,33 @@ impl<'a> Vm<'a> {
                     Instruction::Rem => {
                         let (lhs, rhs) = pop_operands!(self)?;
 
-                        if let (Value::Integer(lhs), Value::Integer(rhs)) = (lhs, rhs) {
+                        if let (Value::Integer(lhs), Value::Integer(rhs)) =
+                            (lhs.as_ref(), rhs.as_ref())
+                        {
                             let result = lhs
-                                .checked_rem(rhs)
+                                .checked_rem(*rhs)
                                 .ok_or(anyhow!("Attempted to take remainder by zero"))?;
 
-                            self.stack.push(Value::Integer(result));
+                            self.stack.push(Rc::new(Value::Integer(result)));
                         } else {
                             bail!("Operands must be both integers.");
                         }
                     }
                     Instruction::Eq => {
                         let (lhs, rhs) = pop_operands!(self)?;
-                        self.stack.push(Value::Bool(lhs == rhs));
+                        self.stack.push(Rc::new(Value::Bool(lhs == rhs)));
                     }
                     Instruction::Neq => {
                         let (lhs, rhs) = pop_operands!(self)?;
-                        self.stack.push(Value::Bool(lhs != rhs));
+                        self.stack.push(Rc::new(Value::Bool(lhs != rhs)));
                     }
                     Instruction::Gt => {
                         let (lhs, rhs) = pop_operands!(self)?;
 
-                        if let (Value::Integer(lhs), Value::Integer(rhs)) = (lhs, rhs) {
-                            self.stack.push(Value::Bool(lhs > rhs));
+                        if let (Value::Integer(lhs), Value::Integer(rhs)) =
+                            (lhs.as_ref(), rhs.as_ref())
+                        {
+                            self.stack.push(Rc::new(Value::Bool(lhs > rhs)));
                         } else {
                             bail!("Operands must be both integers.");
                         }
@@ -232,8 +245,10 @@ impl<'a> Vm<'a> {
                     Instruction::Lt => {
                         let (lhs, rhs) = pop_operands!(self)?;
 
-                        if let (Value::Integer(lhs), Value::Integer(rhs)) = (lhs, rhs) {
-                            self.stack.push(Value::Bool(lhs < rhs));
+                        if let (Value::Integer(lhs), Value::Integer(rhs)) =
+                            (lhs.as_ref(), rhs.as_ref())
+                        {
+                            self.stack.push(Rc::new(Value::Bool(lhs < rhs)));
                         } else {
                             bail!("Operands must be both integers.");
                         }
@@ -241,8 +256,10 @@ impl<'a> Vm<'a> {
                     Instruction::Gte => {
                         let (lhs, rhs) = pop_operands!(self)?;
 
-                        if let (Value::Integer(lhs), Value::Integer(rhs)) = (lhs, rhs) {
-                            self.stack.push(Value::Bool(lhs >= rhs));
+                        if let (Value::Integer(lhs), Value::Integer(rhs)) =
+                            (lhs.as_ref(), rhs.as_ref())
+                        {
+                            self.stack.push(Rc::new(Value::Bool(lhs >= rhs)));
                         } else {
                             bail!("Operands must be both integers.");
                         }
@@ -250,8 +267,10 @@ impl<'a> Vm<'a> {
                     Instruction::Lte => {
                         let (lhs, rhs) = pop_operands!(self)?;
 
-                        if let (Value::Integer(lhs), Value::Integer(rhs)) = (lhs, rhs) {
-                            self.stack.push(Value::Bool(lhs <= rhs));
+                        if let (Value::Integer(lhs), Value::Integer(rhs)) =
+                            (lhs.as_ref(), rhs.as_ref())
+                        {
+                            self.stack.push(Rc::new(Value::Bool(lhs <= rhs)));
                         } else {
                             bail!("Operands must be both integers.");
                         }
@@ -260,8 +279,8 @@ impl<'a> Vm<'a> {
                     Instruction::And => {
                         let (lhs, rhs) = pop_operands!(self)?;
 
-                        if let (Value::Bool(lhs), Value::Bool(rhs)) = (lhs, rhs) {
-                            self.stack.push(Value::Bool(lhs && rhs));
+                        if let (Value::Bool(lhs), Value::Bool(rhs)) = (lhs.as_ref(), rhs.as_ref()) {
+                            self.stack.push(Rc::new(Value::Bool(*lhs && *rhs)));
                         } else {
                             bail!("Operands must be both integers.");
                         }
@@ -269,8 +288,8 @@ impl<'a> Vm<'a> {
                     Instruction::Or => {
                         let (lhs, rhs) = pop_operands!(self)?;
 
-                        if let (Value::Bool(lhs), Value::Bool(rhs)) = (lhs, rhs) {
-                            self.stack.push(Value::Bool(lhs || rhs));
+                        if let (Value::Bool(lhs), Value::Bool(rhs)) = (lhs.as_ref(), rhs.as_ref()) {
+                            self.stack.push(Rc::new(Value::Bool(*lhs || *rhs)));
                         } else {
                             bail!("Operands must be both integers.");
                         }
@@ -278,7 +297,7 @@ impl<'a> Vm<'a> {
                     Instruction::Tuple => {
                         let (first, second) = pop_operands!(self)?;
                         let value = Value::Tuple(Box::new(first), Box::new(second));
-                        self.stack.push(value);
+                        self.stack.push(Rc::new(value));
                     }
                     Instruction::First => {
                         let value = self
@@ -286,8 +305,8 @@ impl<'a> Vm<'a> {
                             .pop()
                             .ok_or(anyhow!("Expected operand, but self.stack was empty."))?;
 
-                        if let Value::Tuple(first, _) = value {
-                            self.stack.push(*first);
+                        if let Value::Tuple(first, _) = value.as_ref() {
+                            self.stack.push(*first.clone());
                         } else {
                             bail!("Tried to compute `first` of a non tuple type.");
                         }
@@ -298,8 +317,8 @@ impl<'a> Vm<'a> {
                             .pop()
                             .ok_or(anyhow!("Expected operand, but self.stack was empty."))?;
 
-                        if let Value::Tuple(_, second) = value {
-                            self.stack.push(*second);
+                        if let Value::Tuple(_, second) = value.as_ref() {
+                            self.stack.push(*second.clone());
                         } else {
                             bail!("Tried to compute `second` of a non tuple type.");
                         }
@@ -344,7 +363,7 @@ impl<'a> Vm<'a> {
                             "Error in if. No value found in the self.stack to be tested."
                         ))?;
 
-                        if let Value::Bool(b) = value {
+                        if let Value::Bool(b) = *value {
                             if !b {
                                 skip = jump;
                                 continue;
@@ -366,7 +385,8 @@ impl<'a> Vm<'a> {
 
                         let mut environment = HashMap::new();
 
-                        if let Value::Closure(parent_function, parent_environment) = parent {
+                        if let Value::Closure(parent_function, parent_environment) = parent.as_ref()
+                        {
                             for captured in &function.captured {
                                 let captured = captured.as_str();
                                 let index = parent_function
@@ -389,30 +409,30 @@ impl<'a> Vm<'a> {
                         }
 
                         let closure = Value::Closure(function, environment);
-                        self.stack.push(closure);
+                        self.stack.push(Rc::new(closure));
                     }
                     Instruction::Call(arity) => {
                         let closure_index = self.stack.len() - 1 - arity as usize;
                         let closure = &self.stack[closure_index];
                         let closure = closure.clone();
 
-                        if let Value::Closure(function, _) = closure {
+                        if let Value::Closure(function, _) = *closure {
                             if function.arity != arity {
                                 bail!("Attempted to call function with wrong number of arguments.");
                             }
 
                             if arity == 1 {
                                 let last_argument = &self.stack[self.stack.len() - 1];
-                                if let Value::Integer(i) = last_argument {
+                                if let Value::Integer(i) = **last_argument {
                                     if let Some(memoized) =
-                                        self.memoization.get(&(function.index, *i))
+                                        self.memoization.get(&(function.index, i))
                                     {
                                         self.stack.truncate(self.stack.len() - 2);
                                         self.stack.push(memoized.clone());
                                         continue;
                                     }
 
-                                    self.current_execution = Some((function.index, *i));
+                                    self.current_execution = Some((function.index, i));
                                 }
                             }
 
@@ -441,23 +461,23 @@ impl<'a> Vm<'a> {
                         let closure = &self.stack[closure_index];
                         let closure = closure.clone();
 
-                        if let Value::Closure(function, _) = closure {
+                        if let Value::Closure(function, _) = *closure {
                             if function.arity != arity {
                                 bail!("Attempted to call function with wrong number of arguments.");
                             }
 
                             if arity == 1 {
                                 let last_argument = &self.stack[self.stack.len() - 2];
-                                if let Value::Integer(i) = last_argument {
+                                if let Value::Integer(i) = **last_argument {
                                     if let Some(memoized) =
-                                        self.memoization.get(&(function.index, *i))
+                                        self.memoization.get(&(function.index, i))
                                     {
                                         self.stack.truncate(self.stack.len() - 2);
                                         self.stack.push(memoized.clone());
                                         continue;
                                     }
 
-                                    self.current_execution = Some((function.index, *i));
+                                    self.current_execution = Some((function.index, i));
                                 }
                             }
 
@@ -473,12 +493,12 @@ impl<'a> Vm<'a> {
                                 .pop()
                                 .expect("A tail call can only exist within another function");
 
-                            let kept: Vec<Value<'_>> = self
+                            let kept: Vec<Rc<Value<'_>>> = self
                                 .stack
                                 .drain(self.stack.len() - arity as usize - 1..)
                                 .collect();
 
-                            let locals_to_remove = match last_frame.closure {
+                            let locals_to_remove = match *last_frame.closure {
                                 Value::Closure(f, _) => f.locals.len(),
                                 _ => unreachable!(),
                             };
@@ -528,8 +548,6 @@ impl<'a> Vm<'a> {
             "At the end of the execution, there must be at least one value in the self.stack.",
         );
 
-        let value: FinalValue = value.into();
-
-        Ok(value)
+        Ok(value.as_ref().into())
     }
 }

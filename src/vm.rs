@@ -15,7 +15,7 @@ pub struct Vm<'a> {
     constants: Vec<Value<'a>>,
     current_execution: Option<(u16, i32)>,
     pub functions: Vec<Function>,
-    globals: HashMap<String, Value<'a>>,
+    globals: HashMap<&'a str, Value<'a>>,
     identifiers: Vec<String>,
     memoization: HashMap<(u16, i32), Value<'a>>,
     pure: bool,
@@ -312,7 +312,7 @@ impl<'a> Vm<'a> {
                         println!("{value}");
                     }
                     Instruction::GlobalSet(index) => {
-                        let identifier = self.identifiers[index as usize].clone();
+                        let identifier = &self.identifiers[index as usize];
 
                         let value = self.stack.pop().ok_or(anyhow!(
                             "Error setting global variable. No value found in the self.stack to be set."
@@ -320,11 +320,11 @@ impl<'a> Vm<'a> {
                         let _ = self.globals.insert(identifier, value);
                     }
                     Instruction::GlobalGet(index) => {
-                        let identifier = self.identifiers[index as usize].clone();
+                        let identifier = self.identifiers[index as usize].as_str();
 
                         let value = environment
-                            .get(&identifier)
-                            .or(self.globals.get(&identifier))
+                            .get(identifier)
+                            .or(self.globals.get(identifier))
                             .ok_or(anyhow!("Unknown variable {identifier}."))?
                             .clone();
 
@@ -368,6 +368,7 @@ impl<'a> Vm<'a> {
 
                         if let Value::Closure(parent_function, parent_environment) = parent {
                             for captured in &function.captured {
+                                let captured = captured.as_str();
                                 let index = parent_function
                                     .locals
                                     .iter()
@@ -375,10 +376,8 @@ impl<'a> Vm<'a> {
 
                                 if let Some(index) = index {
                                     let absolute_index = frame_index + index as usize;
-                                    environment.insert(
-                                        captured.clone(),
-                                        self.stack[absolute_index].clone(),
-                                    );
+                                    environment
+                                        .insert(captured, self.stack[absolute_index].clone());
                                 } else {
                                     let captured_in_parent = parent_environment.get(captured);
                                     if let Some(captured_in_parent) = captured_in_parent {

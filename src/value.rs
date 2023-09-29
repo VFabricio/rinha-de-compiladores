@@ -13,7 +13,7 @@ pub enum Value<'a> {
     Integer(i32),
     String(String),
     Tuple(Box<Value<'a>>, Box<Value<'a>>),
-    Closure(&'a Function, HashMap<String, Value<'a>>),
+    Closure(&'a Function, HashMap<&'a str, Value<'a>>),
 }
 
 impl<'a> fmt::Debug for Value<'a> {

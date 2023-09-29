@@ -17,7 +17,6 @@ pub struct Vm<'a> {
     pub functions: Vec<Function>,
     globals: HashMap<String, Value<'a>>,
     identifiers: Vec<String>,
-    frame_index: usize,
     memoization: HashMap<(u16, i32), Value<'a>>,
     pure: bool,
     stack: Vec<Value<'a>>,
@@ -49,7 +48,6 @@ impl<'a> Vm<'a> {
             functions: Vec::new(),
             globals: HashMap::new(),
             identifiers: Vec::new(),
-            frame_index: 0,
             memoization: HashMap::new(),
             pure: true,
             stack: Vec::new(),
@@ -101,8 +99,9 @@ impl<'a> Vm<'a> {
     fn run(&'a mut self, bytecode: &'a [Instruction]) -> Result<FinalValue> {
         let initial_frame = CallFrame {
             bytecode: &bytecode,
-            instruction_pointer: 0,
             closure: Value::Bool(false),
+            instruction_pointer: 0,
+            frame_index: 0,
         };
 
         self.call_frames.push(initial_frame);
@@ -110,9 +109,11 @@ impl<'a> Vm<'a> {
         loop {
             let bytecode;
             let mut instruction_pointer;
+            let frame_index;
             let mut environment = &HashMap::new();
 
             if let Some(call_frame) = self.call_frames.last() {
+                frame_index = call_frame.frame_index;
                 instruction_pointer = call_frame.instruction_pointer;
                 bytecode = &call_frame.bytecode[instruction_pointer..];
                 if let Value::Closure(_, new_environment) = &call_frame.closure {
@@ -330,7 +331,7 @@ impl<'a> Vm<'a> {
                         self.stack.push(value);
                     }
                     Instruction::LocalGet(index, identifier_index) => {
-                        let absolute_index = self.frame_index + index as usize;
+                        let absolute_index = frame_index + index as usize;
                         if absolute_index >= self.stack.len() {
                             let identifier = &self.identifiers[identifier_index as usize];
                             bail!("Variable {identifier} not found.");
@@ -373,7 +374,7 @@ impl<'a> Vm<'a> {
                                     .position(|l| l.name == *captured);
 
                                 if let Some(index) = index {
-                                    let absolute_index = self.frame_index + index as usize;
+                                    let absolute_index = frame_index + index as usize;
                                     environment.insert(
                                         captured.clone(),
                                         self.stack[absolute_index].clone(),
@@ -401,9 +402,8 @@ impl<'a> Vm<'a> {
                                 bail!("Attempted to call function with wrong number of arguments.");
                             }
 
-                            let last_argument = &self.stack[self.stack.len() - 1];
-
                             if arity == 1 {
+                                let last_argument = &self.stack[self.stack.len() - 1];
                                 if let Value::Integer(i) = last_argument {
                                     if let Some(memoized) =
                                         self.memoization.get(&(function.index, *i))
@@ -426,12 +426,12 @@ impl<'a> Vm<'a> {
 
                             let new_frame = CallFrame {
                                 bytecode: &function.bytecode,
-                                instruction_pointer: 0,
                                 closure,
+                                instruction_pointer: 0,
+                                frame_index: self.stack.len() - arity as usize,
                             };
                             self.call_frames.push(new_frame);
 
-                            self.frame_index = self.stack.len() - arity as usize;
                             break;
                         } else {
                             bail!("Attempted to call value that is not a function!");
@@ -447,9 +447,8 @@ impl<'a> Vm<'a> {
                                 bail!("Attempted to call function with wrong number of arguments.");
                             }
 
-                            let last_argument = &self.stack[self.stack.len() - 2];
-
                             if arity == 1 {
+                                let last_argument = &self.stack[self.stack.len() - 2];
                                 if let Value::Integer(i) = last_argument {
                                     if let Some(memoized) =
                                         self.memoization.get(&(function.index, *i))
@@ -470,27 +469,33 @@ impl<'a> Vm<'a> {
 
                             current_frame.instruction_pointer = instruction_pointer;
 
-                            let new_frame = CallFrame {
-                                bytecode: &function.bytecode,
-                                instruction_pointer: 0,
-                                closure,
-                            };
-                            self.call_frames.pop();
-
-                            self.call_frames.push(new_frame);
+                            let last_frame = self
+                                .call_frames
+                                .pop()
+                                .expect("A tail call can only exist within another function");
 
                             let kept: Vec<Value<'_>> = self
                                 .stack
                                 .drain(self.stack.len() - arity as usize - 1..)
                                 .collect();
 
-                            self.stack.truncate(
-                                self.stack.len() - 1 - arity as usize - function.locals.len(),
-                            );
+                            let locals_to_remove = match last_frame.closure {
+                                Value::Closure(f, _) => f.locals.len(),
+                                _ => unreachable!(),
+                            };
+
+                            self.stack.truncate(self.stack.len() - locals_to_remove - 1);
 
                             self.stack.extend(kept);
 
-                            self.frame_index = self.stack.len() - arity as usize;
+                            let new_frame = CallFrame {
+                                bytecode: &function.bytecode,
+                                closure,
+                                instruction_pointer: 0,
+                                frame_index: self.stack.len() - arity as usize,
+                            };
+                            self.call_frames.push(new_frame);
+
                             break;
                         } else {
                             bail!("Attempted to call value that is not a function!");
@@ -514,10 +519,6 @@ impl<'a> Vm<'a> {
                         self.stack.push(result);
                         self.call_frames.pop();
 
-                        if self.call_frames.len() > 1 {
-                            self.frame_index =
-                                (self.stack.len() - 1).saturating_sub(arity as usize);
-                        }
                         break;
                     }
                 }

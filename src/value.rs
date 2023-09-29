@@ -7,13 +7,25 @@ use std::{
 
 use crate::function::Function;
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub enum Value<'a> {
     Bool(bool),
     Integer(i32),
     String(String),
     Tuple(Box<Value<'a>>, Box<Value<'a>>),
     Closure(&'a Function, HashMap<String, Value<'a>>),
+}
+
+impl<'a> fmt::Debug for Value<'a> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Value::Bool(b) => write!(f, "Bool({b})"),
+            Value::Integer(i) => write!(f, "Integer({i})"),
+            Value::String(s) => write!(f, "String({s})"),
+            Value::Tuple(t1, t2) => write!(f, "Tuple({t1:?}, {t2:?})"),
+            Value::Closure(fun, _) => write!(f, "Closure({})", fun.index),
+        }
+    }
 }
 
 impl<'a> fmt::Display for Value<'a> {

@@ -27,12 +27,12 @@ macro_rules! pop_operands {
         let rhs = $self
             .stack
             .pop()
-            .ok_or(anyhow!("Expected operand, but stack was empty."))?;
+            .ok_or_else(|| anyhow!("Expected operand, but stack was empty."))?;
 
         let lhs = $self
             .stack
             .pop()
-            .ok_or(anyhow!("Expected operand, but stack was empty."))?;
+            .ok_or_else(|| anyhow!("Expected operand, but stack was empty."))?;
 
         let result: Result<(Rc<Value<'_>>, Rc<Value<'_>>)> = Ok((lhs, rhs));
         result
@@ -201,7 +201,7 @@ impl<'a> Vm<'a> {
                         {
                             let result = lhs
                                 .checked_div(*rhs)
-                                .ok_or(anyhow!("Attempted to divide by zero"))?;
+                                .ok_or_else(|| anyhow!("Attempted to divide by zero"))?;
 
                             self.stack.push(Rc::new(Value::Integer(result)));
                         } else {
@@ -216,7 +216,7 @@ impl<'a> Vm<'a> {
                         {
                             let result = lhs
                                 .checked_rem(*rhs)
-                                .ok_or(anyhow!("Attempted to take remainder by zero"))?;
+                                .ok_or_else(|| anyhow!("Attempted to take remainder by zero"))?;
 
                             self.stack.push(Rc::new(Value::Integer(result)));
                         } else {
@@ -300,10 +300,9 @@ impl<'a> Vm<'a> {
                         self.stack.push(Rc::new(value));
                     }
                     Instruction::First => {
-                        let value = self
-                            .stack
-                            .pop()
-                            .ok_or(anyhow!("Expected operand, but self.stack was empty."))?;
+                        let value = self.stack.pop().ok_or_else(|| {
+                            anyhow!("Expected operand, but self.stack was empty.")
+                        })?;
 
                         if let Value::Tuple(first, _) = value.as_ref() {
                             self.stack.push(*first.clone());
@@ -312,10 +311,9 @@ impl<'a> Vm<'a> {
                         }
                     }
                     Instruction::Second => {
-                        let value = self
-                            .stack
-                            .pop()
-                            .ok_or(anyhow!("Expected operand, but self.stack was empty."))?;
+                        let value = self.stack.pop().ok_or_else(|| {
+                            anyhow!("Expected operand, but self.stack was empty.")
+                        })?;
 
                         if let Value::Tuple(_, second) = value.as_ref() {
                             self.stack.push(*second.clone());
@@ -325,17 +323,17 @@ impl<'a> Vm<'a> {
                     }
                     Instruction::Print => {
                         self.pure = false;
-                        let value = self.stack.last().ok_or(anyhow!(
-                            "Error printing. No value found in the self.stack to be set."
-                        ))?;
+                        let value = self.stack.last().ok_or_else(|| {
+                            anyhow!("Error printing. No value found in the self.stack to be set.")
+                        })?;
                         println!("{value}");
                     }
                     Instruction::GlobalSet(index) => {
                         let identifier = &self.identifiers[index as usize];
 
-                        let value = self.stack.pop().ok_or(anyhow!(
+                        let value = self.stack.pop().ok_or_else(|| { anyhow!(
                             "Error setting global variable. No value found in the self.stack to be set."
-                        ))?;
+                        )})?;
                         let _ = self.globals.insert(identifier, value);
                     }
                     Instruction::GlobalGet(index) => {
@@ -344,7 +342,7 @@ impl<'a> Vm<'a> {
                         let value = environment
                             .get(identifier)
                             .or(self.globals.get(identifier))
-                            .ok_or(anyhow!("Unknown variable {identifier}."))?
+                            .ok_or_else(|| anyhow!("Unknown variable {identifier}."))?
                             .clone();
 
                         self.stack.push(value);
@@ -359,9 +357,9 @@ impl<'a> Vm<'a> {
                         self.stack.push(value);
                     }
                     Instruction::If(jump) => {
-                        let value = self.stack.pop().ok_or(anyhow!(
-                            "Error in if. No value found in the self.stack to be tested."
-                        ))?;
+                        let value = self.stack.pop().ok_or_else(|| {
+                            anyhow!("Error in if. No value found in the self.stack to be tested.")
+                        })?;
 
                         if let Value::Bool(b) = *value {
                             if !b {

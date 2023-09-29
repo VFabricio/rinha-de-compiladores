@@ -1,6 +1,5 @@
 use std::{
     cmp::{Eq, PartialEq},
-    collections::HashMap,
     convert::From,
     fmt,
     rc::Rc,
@@ -14,7 +13,7 @@ pub enum Value<'a> {
     Integer(i32),
     String(String),
     Tuple(Box<Rc<Value<'a>>>, Box<Rc<Value<'a>>>),
-    Closure(&'a Function, HashMap<&'a str, Rc<Value<'a>>>),
+    Closure(&'a Function, Vec<(&'a str, Rc<Value<'a>>)>),
 }
 
 impl<'a> fmt::Debug for Value<'a> {

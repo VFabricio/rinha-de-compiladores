@@ -1,6 +1,6 @@
 use anyhow::{anyhow, bail, Result};
 use rinha::{ast::Term, parser::parse_or_report};
-use std::{collections::HashMap, rc::Rc};
+use std::rc::Rc;
 
 use crate::{
     bytecode::Instruction,
@@ -15,9 +15,9 @@ pub struct Vm<'a> {
     constants: Vec<Value<'a>>,
     current_execution: Option<(u16, i32)>,
     pub functions: Vec<Function>,
-    globals: HashMap<&'a str, Rc<Value<'a>>>,
+    globals: Vec<(&'a str, Rc<Value<'a>>)>,
     identifiers: Vec<String>,
-    memoization: HashMap<(u16, i32), Rc<Value<'a>>>,
+    memoization: Vec<((u16, i32), Rc<Value<'a>>)>,
     pure: bool,
     stack: Vec<Rc<Value<'a>>>,
 }
@@ -46,9 +46,9 @@ impl<'a> Vm<'a> {
             constants: Vec::new(),
             current_execution: None,
             functions: Vec::new(),
-            globals: HashMap::new(),
+            globals: Vec::new(),
             identifiers: Vec::new(),
-            memoization: HashMap::new(),
+            memoization: Vec::new(),
             pure: true,
             stack: Vec::new(),
         }
@@ -110,7 +110,7 @@ impl<'a> Vm<'a> {
             let bytecode;
             let mut instruction_pointer;
             let frame_index;
-            let mut environment = &HashMap::new();
+            let mut environment = &Vec::new();
 
             if let Some(call_frame) = self.call_frames.last() {
                 frame_index = call_frame.frame_index;
@@ -334,14 +334,20 @@ impl<'a> Vm<'a> {
                         let value = self.stack.pop().ok_or_else(|| { anyhow!(
                             "Error setting global variable. No value found in the self.stack to be set."
                         )})?;
-                        let _ = self.globals.insert(identifier, value);
+                        let _ = self.globals.push((identifier, value));
                     }
                     Instruction::GlobalGet(index) => {
                         let identifier = self.identifiers[index as usize].as_str();
 
                         let value = environment
-                            .get(identifier)
-                            .or(self.globals.get(identifier))
+                            .iter()
+                            .find(|v| v.0 == identifier)
+                            .map(|v| v.1.clone())
+                            .or(self
+                                .globals
+                                .iter()
+                                .find(|g| g.0 == identifier)
+                                .map(|g| g.1.clone()))
                             .ok_or_else(|| anyhow!("Unknown variable {identifier}."))?
                             .clone();
 
@@ -381,7 +387,7 @@ impl<'a> Vm<'a> {
                             .expect("There is always at least one call frame active.")
                             .closure;
 
-                        let mut environment = HashMap::new();
+                        let mut environment = Vec::new();
 
                         if let Value::Closure(parent_function, parent_environment) = parent.as_ref()
                         {
@@ -395,12 +401,14 @@ impl<'a> Vm<'a> {
                                 if let Some(index) = index {
                                     let absolute_index = frame_index + index as usize;
                                     environment
-                                        .insert(captured, self.stack[absolute_index].clone());
+                                        .push((captured, self.stack[absolute_index].clone()));
                                 } else {
-                                    let captured_in_parent = parent_environment.get(captured);
+                                    let captured_in_parent = parent_environment
+                                        .iter()
+                                        .find(|v| v.0 == captured)
+                                        .map(|v| v.1.clone());
                                     if let Some(captured_in_parent) = captured_in_parent {
-                                        environment
-                                            .insert(captured.clone(), captured_in_parent.clone());
+                                        environment.push((captured, captured_in_parent.clone()));
                                     }
                                 }
                             }
@@ -422,8 +430,8 @@ impl<'a> Vm<'a> {
                             if arity == 1 {
                                 let last_argument = &self.stack[self.stack.len() - 1];
                                 if let Value::Integer(i) = **last_argument {
-                                    if let Some(memoized) =
-                                        self.memoization.get(&(function.index, i))
+                                    if let Some((_, memoized)) =
+                                        self.memoization.iter().find(|m| m.0 == (function.index, i))
                                     {
                                         self.stack.truncate(self.stack.len() - 2);
                                         self.stack.push(memoized.clone());
@@ -467,8 +475,8 @@ impl<'a> Vm<'a> {
                             if arity == 1 {
                                 let last_argument = &self.stack[self.stack.len() - 2];
                                 if let Value::Integer(i) = **last_argument {
-                                    if let Some(memoized) =
-                                        self.memoization.get(&(function.index, i))
+                                    if let Some((_, memoized)) =
+                                        self.memoization.iter().find(|m| m.0 == (function.index, i))
                                     {
                                         self.stack.truncate(self.stack.len() - 2);
                                         self.stack.push(memoized.clone());
@@ -523,7 +531,7 @@ impl<'a> Vm<'a> {
 
                         if let Some(execution) = self.current_execution {
                             if self.pure {
-                                self.memoization.insert(execution, result.clone());
+                                self.memoization.push((execution, result.clone()));
                             }
                         };
 
